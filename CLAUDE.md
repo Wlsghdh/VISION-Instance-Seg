@@ -163,9 +163,13 @@ VISION-Instance-Seg/
 - [x] ahnbi1 기존 코드 분석 완료
 - [x] CLAUDE.md 및 docs/legacy/*.md 생성
 - [ ] 레포 구조 세팅 (폴더, README, RULE.md, .gitignore)
-- [ ] 라벨링 툴 리팩토링 (카테고리별 분리 저장)
-- [ ] 증강 스크립트 정리 (다중 카테고리 지원)
-- [ ] 전통 증강 스크립트 작성
+- [x] 라벨링 툴 리팩토링 (labeling_server/app.py v9: argparse, gen_ai 브라우징, /save/existing)
+- [x] Cable train 데이터 정리 (break 제거 → thunderbolt 26장, images/ 구조 생성)
+- [x] gen_ai 데이터 설정 (cable_transfer → data_augmented/Cable/gen_ai/, 105장)
+- [x] 전통 증강 스크립트 작성 (traditional_augment.py: albumentations 2.x, 마스크 기반)
+- [x] Cable traditional_aug 생성 완료 (2750장, seed=42)
+- [ ] Screw/Casting 동일 작업 (데이터 준비 후 진행)
 - [ ] merge_dataset.py 작성
+- [ ] gemini_augment.py 리팩토링
 - [ ] 실험/평가 스크립트 작성
 - [ ] Gemini 프롬프트 고도화

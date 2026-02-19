@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VISION AI Annotation v5.6</title>
+<title>VISION AI Annotation v9.0</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,sans-serif;background:#0d1117;color:#c9d1d9;overflow:hidden}
@@ -67,6 +67,23 @@ button:disabled{opacity:0.4;cursor:not-allowed}
 .spinner{width:40px;height:40px;border:3px solid #30363d;border-top-color:#8957e5;border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* 서버 이미지 선택 모달 */
+.img-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;justify-content:center;align-items:center;z-index:3000}
+.img-modal-bg.show{display:flex}
+.img-modal{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;width:480px;max-height:70vh;display:flex;flex-direction:column}
+.img-modal h3{color:#58a6ff;font-size:14px;margin-bottom:10px;flex-shrink:0}
+.img-modal .search-row{display:flex;gap:6px;margin-bottom:10px;flex-shrink:0}
+.img-modal .search-row input{flex:1;padding:6px 8px;border:1px solid #30363d;border-radius:6px;background:#0d1117;color:#c9d1d9;font-size:11px}
+.img-modal .search-row button{padding:6px 10px;font-size:11px}
+.img-list{flex:1;overflow-y:auto;border:1px solid #30363d;border-radius:6px}
+.img-list-item{padding:8px 10px;border-bottom:1px solid #21262d;cursor:pointer;font-size:11px;display:flex;justify-content:space-between;align-items:center}
+.img-list-item:hover{background:#1f6feb22}
+.img-list-item.annotated{color:#8b949e}
+.img-list-item .badge-ann{background:#238636;color:#fff;font-size:9px;padding:2px 5px;border-radius:3px}
+.img-list-item .badge-new{background:#30363d;color:#8b949e;font-size:9px;padding:2px 5px;border-radius:3px}
+.img-modal .footer{margin-top:10px;flex-shrink:0;display:flex;justify-content:flex-end;gap:6px}
+.server-badge{display:inline-block;background:#1f6feb;color:#fff;font-size:9px;padding:2px 6px;border-radius:3px;margin-left:4px}
+
 /* 확인 모달 */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;justify-content:center;align-items:center;z-index:2000}
 .modal-bg.show{display:flex}
@@ -87,9 +104,19 @@ button:disabled{opacity:0.4;cursor:not-allowed}
 <body>
 <div class="container">
 <div class="sidebar">
-<h2>🤖 VISION AI Annotation v5.6</h2>
+<h2>🤖 VISION AI Annotation v9.0</h2>
+<div id="serverConfigBanner" style="background:#0d1117;border:1px solid #1f6feb;border-radius:6px;padding:8px;margin-bottom:10px;font-size:10px;color:#58a6ff"></div>
 <div class="section">
-<div class="section-title">1. 이미지</div>
+<div class="section-title">0. 서버 이미지 선택</div>
+<button class="primary" onclick="openImgModal()" style="margin-bottom:4px">📂 서버 이미지 목록</button>
+<div id="serverImageInfo" style="display:none;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:10px">
+  <div style="color:#8b949e">선택된 파일</div>
+  <div id="serverImageName" style="color:#58a6ff;word-break:break-all"></div>
+  <span class="server-badge">서버 이미지</span>
+</div>
+</div>
+<div class="section">
+<div class="section-title">1. 직접 업로드</div>
 <input type="file" id="fileInput" accept="image/*">
 <div class="status-box" id="fileInfo" style="display:none">
 <div class="label">파일</div><div class="value" id="fileName">-</div>
@@ -125,7 +152,7 @@ button:disabled{opacity:0.4;cursor:not-allowed}
 </div>
 <div class="section">
 <div class="section-title">5. 저장</div>
-<button class="primary" onclick="saveCurrentImage()">💾 현재 이미지 저장</button>
+<button class="primary" onclick="saveCurrentImage()" id="btnSave">💾 현재 이미지 저장</button>
 <button class="secondary" onclick="downloadJson()">📥 JSON 다운로드</button>
 </div>
 <div class="section">
@@ -177,6 +204,23 @@ button:disabled{opacity:0.4;cursor:not-allowed}
 
 <div class="toast" id="toast"></div>
 <div class="loading" id="loading"><div class="spinner"></div></div>
+
+<!-- 서버 이미지 선택 모달 -->
+<div class="img-modal-bg" id="imgModal">
+<div class="img-modal">
+  <h3>📂 서버 이미지 선택 <span id="imgModalCount" style="font-size:11px;color:#8b949e"></span></h3>
+  <div class="search-row">
+    <input type="text" id="imgSearchInput" placeholder="파일명 검색..." oninput="filterImgList()">
+    <button class="secondary" onclick="refreshImgList()">새로고침</button>
+  </div>
+  <div class="img-list" id="imgList">
+    <div style="color:#8b949e;font-size:11px;padding:12px;text-align:center">로딩 중...</div>
+  </div>
+  <div class="footer">
+    <button class="secondary" onclick="closeImgModal()">닫기</button>
+  </div>
+</div>
+</div>
 
 <!-- 삭제 확인 모달 -->
 <div class="modal-bg" id="deleteModal">
@@ -292,7 +336,13 @@ let restoredAnnotation = null;
 let savedImages = [];
 let deleteTarget = null;
 
-const categories = {{CATEGORIES_JSON}};
+const categories = {{ CATEGORIES_JSON | safe }};
+const serverConfig = {{ SERVER_CONFIG | safe }};
+
+// 서버 이미지 관련
+let isServerImage = false;      // 현재 이미지가 서버에서 로드된 것인지
+let serverImageFilename = null; // 서버 이미지 파일명
+let allServerFiles = [];        // 서버 이미지 목록 캐시
 
 // ============================================================
 // 초기화
@@ -300,26 +350,32 @@ const categories = {{CATEGORIES_JSON}};
 window.onload = () => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-    
+
     document.getElementById('fileInput').addEventListener('change', loadImage);
     document.getElementById('domainSelect').addEventListener('change', loadClasses);
     document.getElementById('brushSize').addEventListener('input', e => {
         document.getElementById('brushSizeVal').textContent = e.target.value;
     });
-    
+
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
-    
+
     document.addEventListener('keydown', onKeyDown);
-    
+
     loadDomains();
     loadServerInfo();
     setMode('bbox');
     render();
+
+    // 서버 설정 배너 표시
+    const banner = document.getElementById('serverConfigBanner');
+    if (banner && serverConfig) {
+        banner.textContent = `카테고리: ${serverConfig.category}  |  Split: ${serverConfig.split}`;
+    }
 };
 
 function resizeCanvas() {
@@ -427,6 +483,130 @@ function loadImage(e) {
         img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
+}
+
+// ============================================================
+// 서버 이미지 브라우징
+// ============================================================
+async function openImgModal() {
+    document.getElementById('imgModal').classList.add('show');
+    await refreshImgList();
+}
+
+function closeImgModal() {
+    document.getElementById('imgModal').classList.remove('show');
+}
+
+async function refreshImgList() {
+    document.getElementById('imgList').innerHTML =
+        '<div style="color:#8b949e;font-size:11px;padding:12px;text-align:center">로딩 중...</div>';
+    try {
+        const res = await fetch('/images/list');
+        const data = await res.json();
+        allServerFiles = data.files || [];
+        document.getElementById('imgModalCount').textContent =
+            `(전체 ${data.total}장 / 라벨링됨 ${data.annotated}장)`;
+        renderImgList(allServerFiles);
+    } catch (e) {
+        document.getElementById('imgList').innerHTML =
+            `<div style="color:#da3633;font-size:11px;padding:12px">오류: ${e.message}</div>`;
+    }
+}
+
+function filterImgList() {
+    const q = document.getElementById('imgSearchInput').value.toLowerCase();
+    const filtered = q ? allServerFiles.filter(f => f.name.toLowerCase().includes(q)) : allServerFiles;
+    renderImgList(filtered);
+}
+
+function renderImgList(files) {
+    const list = document.getElementById('imgList');
+    if (!files.length) {
+        list.innerHTML = '<div style="color:#8b949e;font-size:11px;padding:12px;text-align:center">이미지 없음</div>';
+        return;
+    }
+    list.innerHTML = files.map(f => `
+        <div class="img-list-item ${f.annotated ? 'annotated' : ''}" onclick="selectServerImage('${f.name}')">
+            <span>${f.name}</span>
+            <span class="badge-${f.annotated ? 'ann' : 'new'}">${f.annotated ? '라벨됨' : '미라벨'}</span>
+        </div>
+    `).join('');
+}
+
+async function selectServerImage(filename) {
+    closeImgModal();
+    document.getElementById('loading').classList.add('show');
+
+    try {
+        // 이미지 로드
+        const imgUrl = `/images/serve/${encodeURIComponent(filename)}`;
+        await new Promise((resolve, reject) => {
+            const newImg = new Image();
+            newImg.onload = () => {
+                img = newImg;
+                imgW = newImg.width;
+                imgH = newImg.height;
+                currentImageData = imgUrl;
+                currentFileName = filename;
+                isServerImage = true;
+                serverImageFilename = filename;
+                resolve();
+            };
+            newImg.onerror = reject;
+            newImg.src = imgUrl + '?t=' + Date.now();
+        });
+
+        // 상태 초기화
+        mask = null; currentBbox = null; tempBbox = null;
+        annotations = []; undoStack = []; lastBrushPos = null; aiConfidence = 0;
+
+        fitView();
+
+        // 서버 이미지 정보 표시
+        document.getElementById('serverImageInfo').style.display = 'block';
+        document.getElementById('serverImageName').textContent = filename;
+        document.getElementById('fileInfo').style.display = 'block';
+        document.getElementById('fileName').textContent = filename;
+        document.getElementById('fileSize').textContent = imgW + ' × ' + imgH;
+
+        // 도메인 자동 선택
+        for (const d of Object.keys(categories)) {
+            document.getElementById('domainSelect').value = d;
+            loadClasses();
+            break;
+        }
+
+        // 기존 annotations 로드
+        const annRes = await fetch(`/annotations/for/${encodeURIComponent(filename)}`);
+        const annData = await annRes.json();
+        if (annData.found && annData.annotations.length > 0) {
+            // COCO annotations → 프론트엔드 포맷으로 변환
+            const catMap = {};
+            for (const d of Object.keys(categories)) {
+                for (const c of categories[d]) { catMap[c.id] = c.name; }
+            }
+            annotations = annData.annotations.map((a, i) => ({
+                id: i + 1,
+                category_id: a.category_id,
+                category_name: catMap[a.category_id] || '?',
+                bbox: a.bbox,
+                segmentation: a.segmentation || [],
+                area: a.area || 0,
+                iscrowd: a.iscrowd || 0,
+                ai: false,
+                regionCount: (a.segmentation || []).length,
+            }));
+            toast(`기존 annotation ${annotations.length}개 로드됨`, 'info');
+        }
+
+        updateAll();
+        render();
+    } catch (e) {
+        toast('이미지 로드 오류: ' + e.message, 'error');
+        console.error(e);
+    } finally {
+        document.getElementById('loading').classList.remove('show');
+    }
 }
 
 function fitView() {
@@ -1371,34 +1551,58 @@ async function saveCurrentImage() {
     }
     
     document.getElementById('loading').classList.add('show');
-    
+
     try {
-        const b64 = currentImageData.split(',')[1];
-        const binary = atob(b64);
-        const bytes = new Uint8Array(binary.length);
-        for (let j = 0; j < binary.length; j++) {
-            bytes[j] = binary.charCodeAt(j);
+        let result;
+
+        if (isServerImage) {
+            // ── 서버 이미지: /save/existing 사용 (파일 업로드 없음) ──
+            const payload = {
+                file_name: serverImageFilename,
+                width: imgW,
+                height: imgH,
+                annotations: annotations.map(a => ({
+                    category_id: a.category_id,
+                    bbox: a.bbox,
+                    segmentation: a.segmentation,
+                    area: a.area,
+                    iscrowd: 0
+                }))
+            };
+            const res = await fetch('/save/existing', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            result = await res.json();
+        } else {
+            // ── 업로드 이미지: 기존 /save 사용 ──
+            const b64 = currentImageData.split(',')[1];
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let j = 0; j < binary.length; j++) {
+                bytes[j] = binary.charCodeAt(j);
+            }
+            const blob = new Blob([bytes], { type: 'image/jpeg' });
+
+            const formData = new FormData();
+            formData.append('image', blob, currentFileName);
+            formData.append('domain', domain);
+            formData.append('width', imgW);
+            formData.append('height', imgH);
+            formData.append('annotations', JSON.stringify(annotations.map(a => ({
+                category_id: a.category_id,
+                bbox: a.bbox,
+                segmentation: a.segmentation,
+                area: a.area,
+                iscrowd: 0
+            }))));
+            const res = await fetch('/save', { method: 'POST', body: formData });
+            result = await res.json();
         }
-        const blob = new Blob([bytes], { type: 'image/jpeg' });
-        
-        const formData = new FormData();
-        formData.append('image', blob, currentFileName);
-        formData.append('domain', domain);
-        formData.append('width', imgW);
-        formData.append('height', imgH);
-        formData.append('annotations', JSON.stringify(annotations.map(a => ({
-            category_id: a.category_id,
-            bbox: a.bbox,
-            segmentation: a.segmentation,
-            area: a.area,
-            iscrowd: 0
-        }))));
-        
-        const res = await fetch('/save', { method: 'POST', body: formData });
-        const result = await res.json();
-        
+
         if (!result.success) throw new Error(result.error);
-        
+
         savedImages.push({
             file_name: result.file_name,
             image_id: result.image_id,
@@ -1406,28 +1610,28 @@ async function saveCurrentImage() {
             domain: domain,
             timestamp: new Date().toLocaleTimeString('ko-KR')
         });
-        
-        toast(`✓ 저장: ${result.file_name}`, 'success');
+
+        toast(`✓ 저장: ${result.file_name} (${annotations.length}개)`, 'success');
         loadServerInfo();
-        
+
+        // 상태 초기화
         currentImageData = null;
         currentFileName = null;
+        isServerImage = false;
+        serverImageFilename = null;
         img = null;
-        imgW = 0;
-        imgH = 0;
-        mask = null;
-        currentBbox = null;
-        annotations = [];
-        undoStack = [];
-        
+        imgW = 0; imgH = 0;
+        mask = null; currentBbox = null;
+        annotations = []; undoStack = [];
+
         document.getElementById('fileInfo').style.display = 'none';
+        document.getElementById('serverImageInfo').style.display = 'none';
         document.getElementById('fileInput').value = '';
-        
+
         updateAll();
         render();
-        
         switchTab('saved');
-        
+
     } catch (e) {
         toast('저장 오류: ' + e.message, 'error');
     } finally {
@@ -1514,7 +1718,7 @@ function downloadJson() {
             area: a.area,
             iscrowd: 0
         })),
-        categories: {{ALL_CATEGORIES}}
+        categories: {{ ALL_CATEGORIES | safe }}
     };
     
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
