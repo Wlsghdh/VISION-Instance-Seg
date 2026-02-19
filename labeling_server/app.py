@@ -1,38 +1,55 @@
 """
-VISION Dataset AI-Assisted Annotation Tool v8.0
-증강 데이터를 annotations_all_merged.json에 추가하는 버전
+VISION Dataset AI-Assisted Annotation Tool v9.0
+- argparse로 category / split 지정 (gen_ai, traditional_aug 등)
+- 서버에 있는 기존 이미지 브라우징 및 annotation 로드/저장
+- data_augmented/{category}/{split}/annotations.json 에 저장
+
+사용법:
+    python labeling_server/app.py --category Cable --split gen_ai
+    python labeling_server/app.py --category Cable --split gen_ai --port 5200
 """
 
-import json, os, argparse, base64
+import json
+import os
+import argparse
+import base64
 from datetime import datetime
+from pathlib import Path
+
 import cv2
 import numpy as np
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 
 app = Flask(__name__)
 
 # ============================================================
-# 설정 - 경로를 실제 환경에 맞게 수정
+# 카테고리별 설정
 # ============================================================
-CONFIG = {
-    # 기존 train JSON (여기에 새 데이터 추가됨)
-    "annotations_path": "/data2/project/2026winter/jjh0709/AA_CV_R/train/annotations.json",
-    
-    # 이미지 저장 디렉토리
-    "images_dir": "/data2/project/2026winter/jjh0709/AA_CV_R/train/images",
-    
-    # 44개 카테고리 (annotations_all_merged.json과 동일)
-    "categories_by_domain": {
-        "Cable": [{"id": 1, "name": "thunderbolt"}]
-    }
+CATEGORY_CLASSES = {
+    "Cable":   [{"id": 1, "name": "thunderbolt", "supercategory": "thunderbolt"}],
+    "Screw":   [{"id": 1, "name": "defect",      "supercategory": "defect"}],
+    "Casting": [
+        {"id": 1, "name": "Inclusoes", "supercategory": "defect"},
+        {"id": 2, "name": "Rechupe",   "supercategory": "defect"},
+    ],
 }
 
-# 전체 카테고리 리스트 생성
-ALL_CATEGORIES = []
-for domain, cats in CONFIG["categories_by_domain"].items():
-    for c in cats:
-        c["supercategory"] = domain
-        ALL_CATEGORIES.append(c)
+# 런타임 설정 (argparse에서 채워짐)
+CONFIG = {
+    "category":        "Cable",
+    "split":           "gen_ai",
+    "annotations_path": "",
+    "images_dir":      "",
+}
+
+
+def get_categories_for_category(category):
+    return {category: CATEGORY_CLASSES.get(category, [])}
+
+
+def get_all_categories(category):
+    return CATEGORY_CLASSES.get(category, [])
+
 
 # ============================================================
 # AI Segmentation (Fallback - Otsu thresholding)
@@ -56,186 +73,257 @@ class FallbackSegmentation:
         polygon = simplified.flatten().tolist()
         return {'mask': mask, 'polygon': polygon, 'confidence': 0.7}
 
+
 ai_model = FallbackSegmentation()
+
 
 # ============================================================
 # JSON 로드/저장
 # ============================================================
 def load_annotations():
-    """기존 annotations_all_merged.json 로드"""
-    if os.path.exists(CONFIG["annotations_path"]):
-        with open(CONFIG["annotations_path"], 'r') as f:
+    ann_path = CONFIG["annotations_path"]
+    if os.path.exists(ann_path):
+        with open(ann_path, 'r') as f:
             return json.load(f)
-    # 파일이 없으면 기본 구조 생성
-    return {
-        "images": [], 
-        "annotations": [], 
-        "categories": ALL_CATEGORIES
-    }
+    cats = get_all_categories(CONFIG["category"])
+    return {"images": [], "annotations": [], "categories": cats}
+
 
 def save_annotations(data):
-    """JSON 저장 (백업 생성)"""
-    # 백업 생성
-    if os.path.exists(CONFIG["annotations_path"]):
-        backup_path = CONFIG["annotations_path"] + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        os.system(f"cp '{CONFIG['annotations_path']}' '{backup_path}'")
-        print(f"📦 백업 생성: {backup_path}")
-    
-    with open(CONFIG["annotations_path"], 'w') as f:
+    ann_path = CONFIG["annotations_path"]
+    # 백업
+    if os.path.exists(ann_path):
+        backup = ann_path + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        with open(ann_path, 'r') as f:
+            orig = f.read()
+        with open(backup, 'w') as f:
+            f.write(orig)
+    with open(ann_path, 'w') as f:
         json.dump(data, f)
-    print(f"💾 저장 완료: {CONFIG['annotations_path']}")
+
 
 def get_next_ids(data):
-    """다음 image_id와 annotation_id 계산"""
-    max_img_id = max([i["id"] for i in data["images"]], default=0)
-    max_anno_id = max([a["id"] for a in data["annotations"]], default=0)
-    return max_img_id + 1, max_anno_id + 1
+    max_img_id = max((i["id"] for i in data["images"]), default=0)
+    max_ann_id = max((a["id"] for a in data["annotations"]), default=0)
+    return max_img_id + 1, max_ann_id + 1
 
-def get_next_image_number(data, domain):
-    """도메인별 다음 이미지 번호 계산 (예: Cable_000047.jpg, PCB_1_000047.jpg)"""
-    nums = []
-    prefix = f"{domain}_"
-    
-    for img in data["images"]:
-        fname = img["file_name"]
-        if fname.startswith(prefix):
-            try:
-                # Cable_000046.jpg -> 46
-                # PCB_1_000046.jpg -> 46
-                # 마지막 언더스코어 이후의 숫자 부분 추출
-                remainder = fname[len(prefix):]  # "000046.jpg"
-                num = int(remainder.split(".")[0])
-                nums.append(num)
-            except:
-                pass
-    return max(nums, default=-1) + 1
 
 def decode_base64_image(b64):
-    """Base64 -> OpenCV 이미지"""
     if ',' in b64:
         b64 = b64.split(',')[1]
     return cv2.imdecode(np.frombuffer(base64.b64decode(b64), np.uint8), cv2.IMREAD_COLOR)
 
-# ============================================================
-# HTML 템플릿 로드
-# ============================================================
-HTML_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'annotation_template.html')
-
-def get_html_template():
-    if os.path.exists(HTML_FILE):
-        with open(HTML_FILE, 'r', encoding='utf-8') as f:
-            return f.read()
-    return DEFAULT_HTML
-
-DEFAULT_HTML = '''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Error</title></head>
-<body style="background:#0d1117;color:#fff;font-family:system-ui;padding:50px;text-align:center">
-<h1>⚠️ 템플릿 파일을 찾을 수 없습니다</h1>
-<p>annotation_template.html 파일이 필요합니다.</p>
-<p>현재 경로: ''' + HTML_FILE + '''</p>
-</body></html>'''
 
 # ============================================================
 # Flask Routes
 # ============================================================
 @app.route('/')
 def index():
-    html = get_html_template()
-    html = html.replace('{{CATEGORIES_JSON}}', json.dumps(CONFIG["categories_by_domain"]))
-    html = html.replace('{{ALL_CATEGORIES}}', json.dumps(ALL_CATEGORIES))
-    return html
+    categories_by_domain = get_categories_for_category(CONFIG["category"])
+    all_categories = get_all_categories(CONFIG["category"])
+    server_config = {
+        "category": CONFIG["category"],
+        "split": CONFIG["split"],
+        "images_dir": CONFIG["images_dir"],
+        "annotations_path": CONFIG["annotations_path"],
+    }
+    return render_template(
+        'annotation_template.html',
+        CATEGORIES_JSON=json.dumps(categories_by_domain),
+        ALL_CATEGORIES=json.dumps(all_categories),
+        SERVER_CONFIG=json.dumps(server_config),
+    )
+
 
 @app.route('/info')
 def info():
-    """서버 상태 정보"""
     data = load_annotations()
-    
-    # 도메인별 통계
     domain_stats = {}
     for img in data["images"]:
         domain = img["file_name"].split("_")[0]
         domain_stats[domain] = domain_stats.get(domain, 0) + 1
-    
     return jsonify({
         "num_images": len(data["images"]),
         "num_annotations": len(data["annotations"]),
         "domain_stats": domain_stats,
-        "json_path": CONFIG["annotations_path"]
+        "json_path": CONFIG["annotations_path"],
+        "category": CONFIG["category"],
+        "split": CONFIG["split"],
     })
+
+
+@app.route('/images/list')
+def images_list():
+    """서버의 이미지 디렉토리 파일 목록 반환"""
+    images_dir = Path(CONFIG["images_dir"])
+    if not images_dir.exists():
+        return jsonify({"files": [], "error": f"디렉토리 없음: {images_dir}"})
+
+    supported = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
+    files = sorted(
+        f.name for f in images_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in supported
+    )
+
+    # 이미 annotation 있는 파일 표시
+    data = load_annotations()
+    annotated = {img["file_name"] for img in data["images"]}
+
+    result = [
+        {"name": f, "annotated": f in annotated}
+        for f in files
+    ]
+    return jsonify({"files": result, "total": len(files), "annotated": len(annotated)})
+
+
+@app.route('/images/serve/<path:filename>')
+def serve_image(filename):
+    """이미지 파일 서빙"""
+    images_dir = CONFIG["images_dir"]
+    return send_from_directory(images_dir, filename)
+
+
+@app.route('/annotations/for/<path:filename>')
+def get_annotations_for(filename):
+    """특정 이미지의 기존 annotations 반환"""
+    data = load_annotations()
+    img_entry = next((i for i in data["images"] if i["file_name"] == filename), None)
+    if img_entry is None:
+        return jsonify({"found": False, "image": None, "annotations": []})
+    anns = [a for a in data["annotations"] if a["image_id"] == img_entry["id"]]
+    return jsonify({"found": True, "image": img_entry, "annotations": anns})
+
 
 @app.route('/save', methods=['POST'])
 def save():
-    """이미지 + 어노테이션 저장"""
+    """새 이미지 업로드 + annotation 저장"""
     try:
         domain = request.form['domain']
         width = int(request.form['width'])
         height = int(request.form['height'])
         annos = json.loads(request.form['annotations'])
         img_file = request.files['image']
-        
-        # 기존 데이터 로드
+
         data = load_annotations()
-        
-        # 다음 ID 계산
         next_img_id, next_anno_id = get_next_ids(data)
-        next_num = get_next_image_number(data, domain)
-        
-        # 파일명 생성 (예: Cable_000047.jpg)
+
+        # 파일명 생성
+        existing_names = {i["file_name"] for i in data["images"]}
+        prefix = f"{domain}_"
+        nums = []
+        for fn in existing_names:
+            if fn.startswith(prefix):
+                try:
+                    nums.append(int(fn[len(prefix):].split('.')[0]))
+                except Exception:
+                    pass
+        next_num = max(nums, default=-1) + 1
         new_filename = f"{domain}_{next_num:06d}.jpg"
         img_path = os.path.join(CONFIG["images_dir"], new_filename)
-        
-        # 이미지 저장
         img_file.save(img_path)
-        print(f"🖼️ 이미지 저장: {img_path}")
-        
-        # images 배열에 추가
+
         data["images"].append({
             "id": next_img_id,
             "file_name": new_filename,
             "width": width,
-            "height": height
+            "height": height,
         })
-        
-        # annotations 배열에 추가 (COCO 형식 보장)
+
         for a in annos:
-            # segmentation 형식 검증: [[x1,y1,x2,y2,...]]
             seg = a["segmentation"]
-            if isinstance(seg, list) and len(seg) > 0:
-                # 모든 좌표를 정수로 변환
-                seg = [[int(round(coord)) for coord in poly] for poly in seg]
-            
-            # bbox 정수 변환 [x, y, w, h]
-            bbox = [int(round(b)) for b in a["bbox"]]
-            
+            if isinstance(seg, list) and seg:
+                seg = [[int(round(c)) for c in poly] for poly in seg]
             data["annotations"].append({
                 "id": next_anno_id,
                 "image_id": next_img_id,
                 "category_id": int(a["category_id"]),
-                "bbox": bbox,
+                "bbox": [int(round(b)) for b in a["bbox"]],
                 "segmentation": seg,
                 "area": int(round(a["area"])),
-                "iscrowd": int(a.get("iscrowd", 0))
+                "iscrowd": int(a.get("iscrowd", 0)),
             })
             next_anno_id += 1
-        
-        # JSON 저장
+
         save_annotations(data)
-        
         return jsonify({
             "success": True,
             "file_name": new_filename,
             "image_id": next_img_id,
             "total_images": len(data["images"]),
-            "total_annotations": len(data["annotations"])
+            "total_annotations": len(data["annotations"]),
         })
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)})
 
+
+@app.route('/save/existing', methods=['POST'])
+def save_existing():
+    """서버에 이미 있는 이미지의 annotation 저장/갱신 (이미지 업로드 없음)"""
+    try:
+        req = request.get_json()
+        filename = req['file_name']
+        width = int(req['width'])
+        height = int(req['height'])
+        annos = req['annotations']
+
+        data = load_annotations()
+
+        # 이미 존재하는 이미지 엔트리 찾기
+        existing_img = next((i for i in data["images"] if i["file_name"] == filename), None)
+
+        if existing_img:
+            img_id = existing_img["id"]
+            # 기존 annotations 삭제
+            data["annotations"] = [a for a in data["annotations"] if a["image_id"] != img_id]
+            _, next_anno_id = get_next_ids(data)
+            next_anno_id = max((a["id"] for a in data["annotations"]), default=0) + 1
+        else:
+            # 새로 추가 (이미지는 이미 디렉토리에 있음)
+            next_img_id, next_anno_id = get_next_ids(data)
+            img_id = next_img_id
+            data["images"].append({
+                "id": img_id,
+                "file_name": filename,
+                "width": width,
+                "height": height,
+            })
+
+        for a in annos:
+            seg = a.get("segmentation", [])
+            if isinstance(seg, list) and seg:
+                seg = [[int(round(c)) for c in poly] for poly in seg]
+            data["annotations"].append({
+                "id": next_anno_id,
+                "image_id": img_id,
+                "category_id": int(a["category_id"]),
+                "bbox": [int(round(b)) for b in a["bbox"]],
+                "segmentation": seg,
+                "area": int(round(a.get("area", 0))),
+                "iscrowd": int(a.get("iscrowd", 0)),
+            })
+            next_anno_id += 1
+
+        save_annotations(data)
+        return jsonify({
+            "success": True,
+            "file_name": filename,
+            "image_id": img_id,
+            "anno_count": len(annos),
+            "total_images": len(data["images"]),
+            "total_annotations": len(data["annotations"]),
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)})
+
+
 @app.route('/ai/segment', methods=['POST'])
 def ai_segment():
-    """AI 자동 세그멘테이션"""
     try:
         req_data = request.json
         image = decode_base64_image(req_data['image'])
@@ -249,107 +337,112 @@ def ai_segment():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/delete', methods=['POST'])
 def delete():
-    """이미지 + 어노테이션 삭제"""
     try:
         req_data = request.json
         file_name = req_data['file_name']
         image_id = req_data['image_id']
-        
-        # 기존 데이터 로드
+
         data = load_annotations()
-        
-        # 이미지 찾기
-        img_idx = None
-        for i, img in enumerate(data["images"]):
-            if img["file_name"] == file_name and img["id"] == image_id:
-                img_idx = i
-                break
-        
+
+        img_idx = next(
+            (i for i, img in enumerate(data["images"])
+             if img["file_name"] == file_name and img["id"] == image_id),
+            None
+        )
         if img_idx is None:
             return jsonify({"success": False, "error": "이미지를 찾을 수 없습니다"})
-        
-        # 해당 이미지의 annotation 삭제
+
         data["annotations"] = [a for a in data["annotations"] if a["image_id"] != image_id]
-        
-        # 이미지 항목 삭제
         del data["images"][img_idx]
-        
-        # 이미지 파일 삭제
+
+        # 파일 삭제 (gen_ai 이미지는 삭제하지 않음 - 원본 보존)
         img_path = os.path.join(CONFIG["images_dir"], file_name)
-        if os.path.exists(img_path):
+        if os.path.exists(img_path) and CONFIG["split"] not in ("gen_ai",):
             os.remove(img_path)
-            print(f"🗑️ 이미지 삭제: {img_path}")
-        
-        # JSON 저장
+
         save_annotations(data)
-        
         return jsonify({
             "success": True,
             "deleted_file": file_name,
             "total_images": len(data["images"]),
-            "total_annotations": len(data["annotations"])
+            "total_annotations": len(data["annotations"]),
         })
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)})
 
+
 @app.route('/stats')
 def stats():
-    """상세 통계"""
     data = load_annotations()
-    
-    # 도메인별 이미지/어노테이션 수
-    img_by_domain = {}
-    for img in data["images"]:
-        domain = img["file_name"].split("_")[0]
-        img_by_domain[domain] = img_by_domain.get(domain, 0) + 1
-    
-    # 카테고리별 어노테이션 수
     cat_id_to_name = {c["id"]: c["name"] for c in data["categories"]}
     anno_by_cat = {}
     for a in data["annotations"]:
         cat_name = cat_id_to_name.get(a["category_id"], "Unknown")
         anno_by_cat[cat_name] = anno_by_cat.get(cat_name, 0) + 1
-    
     return jsonify({
-        "images_by_domain": img_by_domain,
-        "annotations_by_category": anno_by_cat,
         "total_images": len(data["images"]),
-        "total_annotations": len(data["annotations"])
+        "total_annotations": len(data["annotations"]),
+        "annotations_by_category": anno_by_cat,
+        "category": CONFIG["category"],
+        "split": CONFIG["split"],
     })
+
 
 # ============================================================
 # Main
 # ============================================================
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='VISION AI Annotation Tool v8.0')
-    parser.add_argument('--port', type=int, default=5200, help='서버 포트')
-    parser.add_argument('--host', default='0.0.0.0', help='호스트')
-    parser.add_argument('--json', type=str, help='JSON 파일 경로 (기본: annotations_all_merged.json)')
-    parser.add_argument('--images', type=str, help='이미지 디렉토리 경로')
+    BASE_DIR = Path(__file__).parent.parent  # VISION-Instance-Seg/
+
+    parser = argparse.ArgumentParser(
+        description='VISION AI Annotation Tool v9.0',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+예시:
+  # gen_ai 이미지 라벨링 (Cable)
+  python labeling_server/app.py --category Cable --split gen_ai
+
+  # 커스텀 포트
+  python labeling_server/app.py --category Screw --split gen_ai --port 5201
+        """
+    )
+    parser.add_argument('--category', type=str, default='Cable',
+                        choices=['Cable', 'Screw', 'Casting'],
+                        help='대상 카테고리 (기본: Cable)')
+    parser.add_argument('--split', type=str, default='gen_ai',
+                        help='데이터 split (gen_ai / traditional_aug / 커스텀, 기본: gen_ai)')
+    parser.add_argument('--port', type=int, default=5200, help='서버 포트 (기본: 5200)')
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='호스트 (기본: 0.0.0.0)')
     args = parser.parse_args()
-    
-    # 커맨드라인 인자로 경로 오버라이드
-    if args.json:
-        CONFIG["annotations_path"] = args.json
-    if args.images:
-        CONFIG["images_dir"] = args.images
-    
-    print("\n" + "="*60)
-    print("🤖 VISION AI Annotation Tool v8.0")
-    print("="*60)
-    print(f"📁 JSON 경로: {CONFIG['annotations_path']}")
-    print(f"🖼️ 이미지 디렉토리: {CONFIG['images_dir']}")
-    print(f"🌐 URL: http://ahnbi1.suwon.ac.kr:{args.port}")
-    print("="*60 + "\n")
-    
-    # 초기 통계
+
+    # 경로 설정
+    data_aug_dir = BASE_DIR / 'data_augmented' / args.category / args.split
+    CONFIG["category"] = args.category
+    CONFIG["split"] = args.split
+    CONFIG["annotations_path"] = str(data_aug_dir / 'annotations.json')
+    CONFIG["images_dir"] = str(data_aug_dir / 'images')
+
+    # 디렉토리 생성
+    (data_aug_dir / 'images').mkdir(parents=True, exist_ok=True)
+
+    print("\n" + "=" * 60)
+    print("VISION AI Annotation Tool v9.0")
+    print("=" * 60)
+    print(f"  카테고리  : {args.category}")
+    print(f"  Split     : {args.split}")
+    print(f"  이미지    : {CONFIG['images_dir']}")
+    print(f"  JSON      : {CONFIG['annotations_path']}")
+    print(f"  URL       : http://localhost:{args.port}")
+    print("=" * 60)
+
     data = load_annotations()
-    print(f"📊 현재 상태: {len(data['images'])}장 이미지, {len(data['annotations'])}개 어노테이션")
+    print(f"  현재 상태: {len(data['images'])}장 이미지, {len(data['annotations'])}개 annotation")
     print()
-    
+
     app.run(host=args.host, port=args.port, debug=False)

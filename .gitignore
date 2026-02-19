@@ -211,7 +211,21 @@ __marimo__/
 data/
 data_augmented/
 results/
+
+# 모델 가중치 / 체크포인트
 *.pth
 *.pt
 *.ckpt
+*.bin
+*.safetensors
+
+# mmdetection 학습 출력
+work_dirs/
+*.log.json
+
+# 실험 추적
 wandb/
+mlruns/
+
+# annotation 백업 (data_augmented/ 내부라 위에서 이미 제외됨, 혹시 외부에 생길 경우 대비)
+*.backup_*

@@ -27,7 +27,7 @@ Gemini API로 생성한 불량 이미지 증강(Gen-AI aug)이 instance segmenta
 /home/jjh0709/gitrepo/VISION-Instance-Seg/
 ├── data/                   # .gitignore (직접 배치)
 │   └── Cable/
-│       ├── Cable/          # ⚠️ 이중 폴더 문제 → 아래 이동 작업 필요
+│       ├── Cable/          # ⚠️ 이중 폴더 문제 → 아래 이동 작업 필요 (지금은 해결 됨)
 │       │   ├── train/
 │       │   ├── val/
 │       │   └── inference/
