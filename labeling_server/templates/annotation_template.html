@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>VISION AI Annotation v5.6</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0d1117;color:#c9d1d9;overflow:hidden}
+.container{display:flex;height:100vh}
+.sidebar{width:280px;background:#161b22;padding:14px;overflow-y:auto;border-right:1px solid #30363d}
+.sidebar h2{font-size:14px;color:#58a6ff;margin-bottom:14px}
+.section{margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #30363d}
+.section-title{font-size:10px;color:#8b949e;text-transform:uppercase;margin-bottom:6px}
+select,button,input[type=file]{width:100%;padding:8px;border:1px solid #30363d;border-radius:6px;background:#0d1117;color:#c9d1d9;font-size:11px;margin-bottom:4px}
+button{cursor:pointer;font-weight:600;border:none}
+button:hover{filter:brightness(1.2)}
+button.primary{background:#238636}
+button.ai{background:#8957e5}
+button.danger{background:#da3633}
+button.warning{background:#9e6a03}
+button.secondary{background:#30363d}
+button.active{box-shadow:0 0 0 2px #1f6feb}
+button:disabled{opacity:0.4;cursor:not-allowed}
+.btn-row{display:flex;gap:4px}.btn-row button{flex:1}
+.status-box{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;margin-top:6px}
+.status-box .label{font-size:9px;color:#8b949e}.status-box .value{font-size:12px;color:#58a6ff;font-weight:bold}
+.slider-row{display:flex;align-items:center;gap:8px;margin:6px 0}
+.slider-row input[type=range]{flex:1}.slider-row span{min-width:25px;font-size:11px;color:#58a6ff}
+.main{flex:1;display:flex;flex-direction:column}
+.toolbar{background:#161b22;padding:8px 12px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #30363d;font-size:11px}
+.toolbar .mode-badge{padding:4px 10px;border-radius:4px;font-weight:bold;font-size:10px}
+.toolbar .mode-badge.bbox{background:#9e6a03}
+.toolbar .mode-badge.brush{background:#238636}
+.toolbar .mode-badge.eraser{background:#da3633}
+.toolbar span{color:#8b949e}.toolbar b{color:#58a6ff}
+.canvas-area{flex:1;position:relative;overflow:hidden;background:#010409}
+#canvas{position:absolute;cursor:crosshair}
+.panel{width:260px;background:#161b22;padding:14px;overflow-y:auto;border-left:1px solid #30363d}
+.panel h3{font-size:13px;color:#58a6ff;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.panel h3 .count{font-size:11px;background:#30363d;padding:2px 8px;border-radius:10px}
+.work-status{background:#0d1117;border:2px solid #1f6feb;border-radius:8px;padding:12px;margin-bottom:12px}
+.work-status .step{padding:6px 8px;border-radius:4px;margin:4px 0;font-size:11px}
+.work-status .step.done{background:#238636;color:#fff}
+.work-status .step.active{background:#1f6feb;color:#fff}
+.work-status .step.pending{background:#30363d;color:#8b949e}
+.anno-item{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;margin-bottom:6px;font-size:10px}
+.anno-item .title{font-weight:bold;color:#c9d1d9}.anno-item .meta{color:#8b949e}
+.anno-item .badge{display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;margin-right:4px}
+.anno-item .badge.ai{background:#8957e555;color:#a371f7}
+.anno-item .badge.manual{background:#1f6feb55;color:#58a6ff}
+.anno-item .badge.multi{background:#22c55555;color:#22c55e}
+
+/* 저장 기록 스타일 */
+.saved-item{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;margin-bottom:6px;font-size:10px;position:relative}
+.saved-item:hover{border-color:#58a6ff}
+.saved-item .filename{font-weight:bold;color:#58a6ff;word-break:break-all}
+.saved-item .info{color:#8b949e;margin-top:4px}
+.saved-item .info span{margin-right:8px}
+.saved-item .delete-btn{position:absolute;top:6px;right:6px;background:#da3633;border:none;color:#fff;width:20px;height:20px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;opacity:0.7}
+.saved-item .delete-btn:hover{opacity:1}
+.saved-item.deleting{opacity:0.5;pointer-events:none}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 24px;border-radius:6px;font-size:12px;font-weight:600;display:none;z-index:1000}
+.toast.show{display:block}.toast.success{background:#238636}.toast.error{background:#da3633}.toast.info{background:#1f6feb}
+.loading{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;justify-content:center;align-items:center;z-index:2000}
+.loading.show{display:flex}
+.spinner{width:40px;height:40px;border:3px solid #30363d;border-top-color:#8957e5;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 확인 모달 */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;justify-content:center;align-items:center;z-index:2000}
+.modal-bg.show{display:flex}
+.modal{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;max-width:400px;text-align:center}
+.modal h3{color:#da3633;margin-bottom:12px}
+.modal p{color:#8b949e;margin-bottom:16px;font-size:12px}
+.modal .filename{color:#58a6ff;font-weight:bold}
+.modal .btn-row{margin-top:16px}
+
+/* 탭 스타일 */
+.tabs{display:flex;gap:4px;margin-bottom:10px}
+.tab{flex:1;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#8b949e;font-size:10px;cursor:pointer;text-align:center}
+.tab.active{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.tab-content{display:none}
+.tab-content.active{display:block}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="sidebar">
+<h2>🤖 VISION AI Annotation v5.6</h2>
+<div class="section">
+<div class="section-title">1. 이미지</div>
+<input type="file" id="fileInput" accept="image/*">
+<div class="status-box" id="fileInfo" style="display:none">
+<div class="label">파일</div><div class="value" id="fileName">-</div>
+<div class="label">크기</div><div class="value" id="fileSize">-</div>
+</div>
+</div>
+<div class="section">
+<div class="section-title">2. 클래스 선택</div>
+<select id="domainSelect"><option value="">도메인 선택</option></select>
+<select id="classSelect"><option value="">클래스 선택</option></select>
+</div>
+<div class="section">
+<div class="section-title">3. 그리기 모드</div>
+<div class="btn-row">
+<button id="btnBbox" class="warning" onclick="setMode('bbox')">⬜ BBox</button>
+<button id="btnBrush" class="primary" onclick="setMode('brush')">🖌️ Brush</button>
+<button id="btnEraser" class="danger" onclick="setMode('eraser')">🧹 지우개</button>
+</div>
+<div style="margin-top:8px">
+<button id="btnAiSeg" class="ai" onclick="runAI()" disabled>🤖 AI Segment</button>
+</div>
+<div class="slider-row">
+<span style="color:#8b949e">크기</span>
+<input type="range" id="brushSize" min="1" max="50" value="10">
+<span id="brushSizeVal">10</span>
+</div>
+</div>
+<div class="section">
+<div class="section-title">4. 작업</div>
+<button class="primary" onclick="finish()">✅ 현재 결함 완성</button>
+<button class="warning" onclick="clearCurrent()">🗑️ 현재 작업 취소</button>
+<button class="secondary" onclick="undo()">↩️ Undo (Ctrl+Z)</button>
+</div>
+<div class="section">
+<div class="section-title">5. 저장</div>
+<button class="primary" onclick="saveCurrentImage()">💾 현재 이미지 저장</button>
+<button class="secondary" onclick="downloadJson()">📥 JSON 다운로드</button>
+</div>
+<div class="section">
+<div class="status-box"><div class="label">서버 총계</div><div class="value" id="serverStats">-</div></div>
+<div class="status-box"><div class="label">현재 마스크</div><div class="value" id="maskStats">0 px (0개 영역)</div></div>
+</div>
+</div>
+
+<div class="main">
+<div class="toolbar">
+<span class="mode-badge bbox" id="modeBadge">⬜ BBox</span>
+<span>좌표: <b id="coordsDisp">0, 0</b></span>
+<span>확대: <b id="zoomDisp">100%</b></span>
+<span style="margin-left:auto">세션: <b id="sessionCount">0</b>장 저장됨</span>
+</div>
+<div class="canvas-area" id="canvasArea">
+<canvas id="canvas"></canvas>
+</div>
+</div>
+
+<div class="panel">
+<!-- 탭 -->
+<div class="tabs">
+<div class="tab active" onclick="switchTab('current')">📋 현재 작업</div>
+<div class="tab" onclick="switchTab('saved')">💾 저장 기록</div>
+</div>
+
+<!-- 현재 작업 탭 -->
+<div id="tabCurrent" class="tab-content active">
+<div class="work-status">
+<div class="step pending" id="step1">1. 클래스 선택</div>
+<div class="step pending" id="step2">2. BBox 그리기</div>
+<div class="step pending" id="step3">3. Segmentation</div>
+<div class="step pending" id="step4">4. 완성</div>
+</div>
+<h3>📦 Annotations <span class="count" id="annoCount">0</span></h3>
+<div id="annoList"></div>
+</div>
+
+<!-- 저장 기록 탭 -->
+<div id="tabSaved" class="tab-content">
+<h3>💾 이번 세션 저장 기록 <span class="count" id="savedCount">0</span></h3>
+<div id="savedList">
+<div style="color:#8b949e;font-size:11px;padding:8px">저장된 이미지 없음</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="loading" id="loading"><div class="spinner"></div></div>
+
+<!-- 삭제 확인 모달 -->
+<div class="modal-bg" id="deleteModal">
+<div class="modal">
+<h3>⚠️ 삭제 확인</h3>
+<p>정말 이 이미지를 삭제하시겠습니까?<br><span class="filename" id="deleteFileName">-</span></p>
+<p style="color:#da3633;font-size:11px">이미지 파일과 JSON의 관련 annotation이 모두 삭제됩니다.</p>
+<div class="btn-row">
+<button class="secondary" onclick="closeDeleteModal()">취소</button>
+<button class="danger" onclick="confirmDelete()">삭제</button>
+</div>
+</div>
+</div>
+
+<script>
+// ============================================================
+// v5.6: 다중 분리 영역 segmentation 지원
+// ============================================================
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const canvasArea = document.getElementById('canvasArea');
+
+// 이미지 관련
+let img = null;
+let imgW = 0, imgH = 0;
+let currentImageData = null;
+let currentFileName = null;
+
+// 뷰 변환
+let scale = 1, panX = 0, panY = 0;
+
+// 모드 및 상태
+let mode = 'bbox';
+let drawing = false;
+let panning = false;
+let lastPan = null;
+
+// BBox
+let currentBbox = null;
+let tempBbox = null;
+let bboxStart = null;
+// ============================================================
+// BBox 리사이즈 핸들
+// ============================================================
+let resizingBbox = false;
+let resizeHandle = null;
+let bboxDragging = false;
+let dragStart = null;
+
+function getBboxHandles(bbox, size) {
+    const {x, y, w, h} = bbox;
+    return [
+        {type: 'tl', x: x, y: y},
+        {type: 't', x: x + w/2, y: y},
+        {type: 'tr', x: x + w, y: y},
+        {type: 'l', x: x, y: y + h/2},
+        {type: 'r', x: x + w, y: y + h/2},
+        {type: 'bl', x: x, y: y + h},
+        {type: 'b', x: x + w/2, y: y + h},
+        {type: 'br', x: x + w, y: y + h}
+    ];
+}
+
+function getHandleAtPoint(px, py) {
+    if (!currentBbox) return null;
+    const handleSize = 12 / scale;
+    const handles = getBboxHandles(currentBbox, handleSize);
+    for (const h of handles) {
+        if (Math.abs(px - h.x) < handleSize && Math.abs(py - h.y) < handleSize) {
+            return h.type;
+        }
+    }
+    return null;
+}
+
+function isInsideBbox(px, py) {
+    if (!currentBbox) return false;
+    const {x, y, w, h} = currentBbox;
+    return px >= x && px <= x + w && py >= y && py <= y + h;
+}
+
+function updateCursor(px, py) {
+    if (!currentBbox) {
+        canvas.style.cursor = 'crosshair';
+        return;
+    }
+    const handle = getHandleAtPoint(px, py);
+    if (handle) {
+        if (handle === 'tl' || handle === 'br') canvas.style.cursor = 'nwse-resize';
+        else if (handle === 'tr' || handle === 'bl') canvas.style.cursor = 'nesw-resize';
+        else if (handle === 't' || handle === 'b') canvas.style.cursor = 'ns-resize';
+        else if (handle === 'l' || handle === 'r') canvas.style.cursor = 'ew-resize';
+    } else if (isInsideBbox(px, py) && mode === 'bbox') {
+        canvas.style.cursor = 'move';
+    } else {
+        canvas.style.cursor = 'crosshair';
+    }
+}
+
+// 마스크
+let mask = null;
+let lastBrushPos = null;
+
+
+// Annotations
+let annotations = [];
+let undoStack = [];
+let aiConfidence = 0;
+let restoredAnnotation = null;
+
+// ★ 저장 기록
+let savedImages = [];
+let deleteTarget = null;
+
+const categories = {{CATEGORIES_JSON}};
+
+// ============================================================
+// 초기화
+// ============================================================
+window.onload = () => {
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    
+    document.getElementById('fileInput').addEventListener('change', loadImage);
+    document.getElementById('domainSelect').addEventListener('change', loadClasses);
+    document.getElementById('brushSize').addEventListener('input', e => {
+        document.getElementById('brushSizeVal').textContent = e.target.value;
+    });
+    
+    canvas.addEventListener('mousedown', onMouseDown);
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mouseleave', onMouseLeave);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    
+    document.addEventListener('keydown', onKeyDown);
+    
+    loadDomains();
+    loadServerInfo();
+    setMode('bbox');
+    render();
+};
+
+function resizeCanvas() {
+    canvas.width = canvasArea.clientWidth;
+    canvas.height = canvasArea.clientHeight;
+    render();
+}
+
+// ============================================================
+// 탭 전환
+// ============================================================
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    if (tab === 'current') {
+        document.querySelectorAll('.tab')[0].classList.add('active');
+        document.getElementById('tabCurrent').classList.add('active');
+    } else {
+        document.querySelectorAll('.tab')[1].classList.add('active');
+        document.getElementById('tabSaved').classList.add('active');
+    }
+}
+
+// ============================================================
+// 좌표 변환
+// ============================================================
+function screenToImage(sx, sy) {
+    return { x: (sx - panX) / scale, y: (sy - panY) / scale };
+}
+
+// ============================================================
+// 파일 로드
+// ============================================================
+function loadDomains() {
+    const sel = document.getElementById('domainSelect');
+    sel.innerHTML = '<option value="">도메인 선택</option>';
+    Object.keys(categories).forEach(d => {
+        sel.innerHTML += `<option value="${d}">${d}</option>`;
+    });
+}
+
+function loadClasses() {
+    const domain = document.getElementById('domainSelect').value;
+    const sel = document.getElementById('classSelect');
+    sel.innerHTML = '<option value="">클래스 선택</option>';
+    if (domain && categories[domain]) {
+        categories[domain].forEach(c => {
+            sel.innerHTML += `<option value='${JSON.stringify(c)}'>${c.name}</option>`;
+        });
+    }
+    updateStatus();
+}
+
+function loadServerInfo() {
+    fetch('/info').then(r => r.json())
+        .then(d => {
+            document.getElementById('serverStats').textContent = 
+                d.num_images + '장, ' + d.num_annotations + '개';
+        })
+        .catch(() => {
+            document.getElementById('serverStats').textContent = '연결 실패';
+        });
+}
+
+function loadImage(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        img = new Image();
+        img.onload = () => {
+            imgW = img.width;
+            imgH = img.height;
+            
+            currentImageData = ev.target.result;
+            currentFileName = file.name;
+            
+            mask = null;
+            currentBbox = null;
+            tempBbox = null;
+            annotations = [];
+            undoStack = [];
+            lastBrushPos = null;
+            aiConfidence = 0;
+            
+            fitView();
+            
+            document.getElementById('fileInfo').style.display = 'block';
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = imgW + ' × ' + imgH;
+            
+            for (const d of Object.keys(categories)) {
+                if (file.name.toLowerCase().includes(d.toLowerCase())) {
+                    document.getElementById('domainSelect').value = d;
+                    loadClasses();
+                    break;
+                }
+            }
+            
+            updateAll();
+            render();
+        };
+        img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function fitView() {
+    const pad = 50;
+    const availW = canvasArea.clientWidth - pad * 2;
+    const availH = canvasArea.clientHeight - pad * 2;
+    
+    scale = Math.min(availW / imgW, availH / imgH, 1);
+    panX = (canvasArea.clientWidth - imgW * scale) / 2;
+    panY = (canvasArea.clientHeight - imgH * scale) / 2;
+    
+    document.getElementById('zoomDisp').textContent = Math.round(scale * 100) + '%';
+}
+
+// ============================================================
+// 마우스 이벤트
+// ============================================================
+function onMouseDown(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    
+    if (e.button === 2) {
+        panning = true;
+        lastPan = { x: sx, y: sy };
+        canvas.style.cursor = 'grabbing';
+        return;
+    }
+    
+    if (e.button === 0 && img) {
+        const p = screenToImage(sx, sy);
+        if (p.x < 0 || p.x >= imgW || p.y < 0 || p.y >= imgH) return;
+        
+        const ix = Math.floor(p.x);
+        const iy = Math.floor(p.y);
+        
+        if (mode === 'bbox') {
+            const handle = getHandleAtPoint(p.x, p.y);
+            if (handle) {
+                resizingBbox = true;
+                resizeHandle = handle;
+                return;
+            }
+            
+            if (isInsideBbox(p.x, p.y)) {
+                bboxDragging = true;
+                dragStart = { x: p.x, y: p.y, bbox: {...currentBbox} };
+                return;
+            }
+            
+            drawing = true;
+            bboxStart = { x: p.x, y: p.y };
+            tempBbox = null;
+        } 
+        else if (mode === 'brush') {
+            saveUndo();
+            if (!mask) mask = new Uint8Array(imgW * imgH);
+            drawing = true;
+            lastBrushPos = { x: ix, y: iy };
+            paintCircle(ix, iy, true);
+            render();
+        }
+        else if (mode === 'eraser') {
+            if (mask) {
+                saveUndo();
+                drawing = true;
+                lastBrushPos = { x: ix, y: iy };
+                paintCircle(ix, iy, false);
+                render();
+            }
+        }
+    }
+}
+
+function onMouseMove(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const p = screenToImage(sx, sy);
+    
+    document.getElementById('coordsDisp').textContent = 
+        Math.floor(p.x) + ', ' + Math.floor(p.y);
+    
+    if (!drawing && !resizingBbox && !bboxDragging && !panning) {
+        updateCursor(p.x, p.y);
+    }
+    
+    if (panning && lastPan) {
+        panX += sx - lastPan.x;
+        panY += sy - lastPan.y;
+        lastPan = { x: sx, y: sy };
+        render();
+        return;
+    }
+    
+    if (resizingBbox && currentBbox && resizeHandle) {
+        const {x, y, w, h} = currentBbox;
+        
+        switch(resizeHandle) {
+            case 'tl':
+                currentBbox.w = x + w - p.x;
+                currentBbox.h = y + h - p.y;
+                currentBbox.x = p.x;
+                currentBbox.y = p.y;
+                break;
+            case 'tr':
+                currentBbox.w = p.x - x;
+                currentBbox.h = y + h - p.y;
+                currentBbox.y = p.y;
+                break;
+            case 'bl':
+                currentBbox.w = x + w - p.x;
+                currentBbox.h = p.y - y;
+                currentBbox.x = p.x;
+                break;
+            case 'br':
+                currentBbox.w = p.x - x;
+                currentBbox.h = p.y - y;
+                break;
+            case 't':
+                currentBbox.h = y + h - p.y;
+                currentBbox.y = p.y;
+                break;
+            case 'b':
+                currentBbox.h = p.y - y;
+                break;
+            case 'l':
+                currentBbox.w = x + w - p.x;
+                currentBbox.x = p.x;
+                break;
+            case 'r':
+                currentBbox.w = p.x - x;
+                break;
+        }
+        
+        if (currentBbox.w < 5) currentBbox.w = 5;
+        if (currentBbox.h < 5) currentBbox.h = 5;
+        
+        render();
+        return;
+    }
+    
+    if (bboxDragging && dragStart) {
+        const dx = p.x - dragStart.x;
+        const dy = p.y - dragStart.y;
+        currentBbox.x = dragStart.bbox.x + dx;
+        currentBbox.y = dragStart.bbox.y + dy;
+        render();
+        return;
+    }
+    
+    if (drawing && img) {
+        const ix = Math.floor(p.x);
+        const iy = Math.floor(p.y);
+        
+        if (mode === 'bbox' && bboxStart) {
+            tempBbox = {
+                x: Math.min(bboxStart.x, p.x),
+                y: Math.min(bboxStart.y, p.y),
+                w: Math.abs(p.x - bboxStart.x),
+                h: Math.abs(p.y - bboxStart.y)
+            };
+            render();
+        }
+        else if (mode === 'brush' && mask) {
+            if (lastBrushPos) {
+                paintLine(lastBrushPos.x, lastBrushPos.y, ix, iy, true);
+            }
+            lastBrushPos = { x: ix, y: iy };
+            render();
+        }
+        else if (mode === 'eraser' && mask) {
+            if (lastBrushPos) {
+                paintLine(lastBrushPos.x, lastBrushPos.y, ix, iy, false);
+            }
+            lastBrushPos = { x: ix, y: iy };
+            render();
+        }
+    }
+}
+
+function onMouseUp(e) {
+    if (e.button === 2) {
+        panning = false;
+        lastPan = null;
+        canvas.style.cursor = 'crosshair';
+        return;
+    }
+    
+    if (e.button === 0) {
+        if (resizingBbox) {
+            resizingBbox = false;
+            resizeHandle = null;
+            if (currentBbox.w < 0) {
+                currentBbox.x += currentBbox.w;
+                currentBbox.w = Math.abs(currentBbox.w);
+            }
+            if (currentBbox.h < 0) {
+                currentBbox.y += currentBbox.h;
+                currentBbox.h = Math.abs(currentBbox.h);
+            }
+            currentBbox.x = Math.round(currentBbox.x);
+            currentBbox.y = Math.round(currentBbox.y);
+            currentBbox.w = Math.round(currentBbox.w);
+            currentBbox.h = Math.round(currentBbox.h);
+            render();
+            return;
+        }
+        
+        if (bboxDragging) {
+            bboxDragging = false;
+            dragStart = null;
+            currentBbox.x = Math.round(currentBbox.x);
+            currentBbox.y = Math.round(currentBbox.y);
+            render();
+            return;
+        }
+        
+        if (drawing) {
+            drawing = false;
+            lastBrushPos = null;
+            
+            if (mode === 'bbox' && tempBbox && tempBbox.w > 3 && tempBbox.h > 3) {
+                saveUndo();
+                currentBbox = {
+                    x: Math.round(tempBbox.x),
+                    y: Math.round(tempBbox.y),
+                    w: Math.round(tempBbox.w),
+                    h: Math.round(tempBbox.h)
+                };
+                tempBbox = null;
+                bboxStart = null;
+                document.getElementById('btnAiSeg').disabled = false;
+                toast('BBox 설정됨 - 모서리를 드래그해서 수정 가능', 'info');
+            }
+            
+            updateStatus();
+            render();
+        }
+    }
+}
+
+function onMouseLeave() {
+    drawing = false;
+    panning = false;
+    resizingBbox = false;
+    bboxDragging = false;
+    lastBrushPos = null;
+    lastPan = null;
+    dragStart = null;
+    resizeHandle = null;
+}
+
+function onWheel(e) {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+    const newScale = Math.max(0.1, Math.min(10, scale * zoomFactor));
+    
+    panX = mx - (mx - panX) * (newScale / scale);
+    panY = my - (my - panY) * (newScale / scale);
+    scale = newScale;
+    
+    document.getElementById('zoomDisp').textContent = Math.round(scale * 100) + '%';
+    render();
+}
+
+function onKeyDown(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    
+    if (e.ctrlKey && e.key === 'z') {
+        e.preventDefault();
+        undo();
+        return;
+    }
+    
+    switch (e.key.toLowerCase()) {
+        case 'b': setMode('bbox'); break;
+        case 'p': case 's': setMode('brush'); break;
+        case 'e': setMode('eraser'); break;
+        case 'a': runAI(); break;
+        case 'enter': finish(); break;
+        case 'escape': clearCurrent(); break;
+        case 'r': fitView(); render(); break;
+        case '[': adjustBrush(-3); break;
+        case ']': adjustBrush(3); break;
+    }
+}
+
+function adjustBrush(delta) {
+    const inp = document.getElementById('brushSize');
+    inp.value = Math.max(1, Math.min(50, parseInt(inp.value) + delta));
+    document.getElementById('brushSizeVal').textContent = inp.value;
+}
+
+// ============================================================
+// 모드 설정
+// ============================================================
+function setMode(m) {
+    mode = m;
+    
+    document.getElementById('btnBbox').classList.remove('active');
+    document.getElementById('btnBrush').classList.remove('active');
+    document.getElementById('btnEraser').classList.remove('active');
+    
+    if (m === 'bbox') document.getElementById('btnBbox').classList.add('active');
+    else if (m === 'brush') document.getElementById('btnBrush').classList.add('active');
+    else if (m === 'eraser') document.getElementById('btnEraser').classList.add('active');
+    
+    const badge = document.getElementById('modeBadge');
+    badge.className = 'mode-badge ' + m;
+    badge.textContent = m === 'bbox' ? '⬜ BBox' : m === 'brush' ? '🖌️ Brush' : '🧹 지우개';
+}
+
+
+// ============================================================
+// 마스크 그리기
+// ============================================================
+function paintCircle(cx, cy, fill) {
+    const r = parseInt(document.getElementById('brushSize').value);
+    const rSq = r * r;
+    
+    for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+            if (dx * dx + dy * dy <= rSq) {
+                const px = cx + dx;
+                const py = cy + dy;
+                
+                if (px < 0 || px >= imgW || py < 0 || py >= imgH) continue;
+                
+                if (currentBbox) {
+                    if (px < currentBbox.x || px >= currentBbox.x + currentBbox.w ||
+                        py < currentBbox.y || py >= currentBbox.y + currentBbox.h) {
+                        continue;
+                    }
+                }
+                
+                mask[py * imgW + px] = fill ? 1 : 0;
+            }
+        }
+    }
+    updateMaskStats();
+}
+
+function paintLine(x0, y0, x1, y1, fill) {
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    
+    let x = x0, y = y0;
+    while (true) {
+        paintCircle(x, y, fill);
+        if (x === x1 && y === y1) break;
+        const e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+    }
+}
+
+function updateMaskStats() {
+    if (!mask) {
+        document.getElementById('maskStats').textContent = '0 px (0개 영역)';
+        return;
+    }
+    let count = 0;
+    for (let i = 0; i < mask.length; i++) {
+        if (mask[i]) count++;
+    }
+    // 영역 개수도 표시
+    const polys = maskToPolygon();
+    const regionCount = polys ? polys.length : 0;
+    document.getElementById('maskStats').textContent = 
+        count.toLocaleString() + ' px (' + regionCount + '개 영역)';
+}
+
+// ============================================================
+// 마스크 → 폴리곤 변환 (모든 연결된 영역 포함) - v5.6 수정
+// ============================================================
+function maskToPolygon() {
+    if (!mask) return [];
+    
+    const visited = new Uint8Array(imgW * imgH);
+    const allPolygons = [];
+    
+    for (let y = 0; y < imgH; y++) {
+        for (let x = 0; x < imgW; x++) {
+            const idx = y * imgW + x;
+            if (mask[idx] && !visited[idx]) {
+                // BFS로 연결된 영역 찾기
+                const region = [];
+                const queue = [[x, y]];
+                visited[idx] = 1;
+                
+                while (queue.length > 0) {
+                    const [cx, cy] = queue.shift();
+                    region.push({x: cx, y: cy});
+                    
+                    const neighbors = [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]];
+                    for (const [nx, ny] of neighbors) {
+                        if (nx >= 0 && nx < imgW && ny >= 0 && ny < imgH) {
+                            const nidx = ny * imgW + nx;
+                            if (mask[nidx] && !visited[nidx]) {
+                                visited[nidx] = 1;
+                                queue.push([nx, ny]);
+                            }
+                        }
+                    }
+                }
+                
+                // 최소 픽셀 수 (노이즈 제거)
+                if (region.length >= 10) {
+                    const poly = regionToPolygon(region);
+                    if (poly.length >= 6) {
+                        allPolygons.push(poly);
+                    }
+                }
+            }
+        }
+    }
+    
+    if (allPolygons.length === 0) return [];
+    
+    // ★ v5.6: 모든 영역의 폴리곤 반환 (크기순 정렬)
+    allPolygons.sort((a, b) => b.length - a.length);
+    return allPolygons;  // 배열의 배열 반환
+}
+
+function regionToPolygon(region) {
+    const regionSet = new Set(region.map(p => `${p.x},${p.y}`));
+    const edgePixels = [];
+    
+    for (const p of region) {
+        const neighbors = [[p.x-1,p.y],[p.x+1,p.y],[p.x,p.y-1],[p.x,p.y+1]];
+        for (const [nx, ny] of neighbors) {
+            if (!regionSet.has(`${nx},${ny}`)) {
+                edgePixels.push(p);
+                break;
+            }
+        }
+    }
+    
+    if (edgePixels.length < 3) return [];
+    
+    const contour = traceContour(edgePixels);
+    
+    const maxPoints = 150;
+    const step = Math.max(1, Math.floor(contour.length / maxPoints));
+    
+    const polygon = [];
+    for (let i = 0; i < contour.length; i += step) {
+        polygon.push(contour[i].x, contour[i].y);
+    }
+    
+    return polygon;
+}
+
+function traceContour(edgePixels) {
+    if (edgePixels.length === 0) return [];
+    
+    const pixelSet = new Set(edgePixels.map(p => `${p.x},${p.y}`));
+    const visited = new Set();
+    const contour = [];
+    
+    let start = edgePixels[0];
+    for (const p of edgePixels) {
+        if (p.y < start.y || (p.y === start.y && p.x < start.x)) {
+            start = p;
+        }
+    }
+    
+    let current = start;
+    const directions = [
+        [1, 0], [1, 1], [0, 1], [-1, 1],
+        [-1, 0], [-1, -1], [0, -1], [1, -1]
+    ];
+    let dir = 0;
+    
+    do {
+        contour.push({x: current.x, y: current.y});
+        visited.add(`${current.x},${current.y}`);
+        
+        let found = false;
+        for (let i = 0; i < 8; i++) {
+            const newDir = (dir + 6 + i) % 8;
+            const nx = current.x + directions[newDir][0];
+            const ny = current.y + directions[newDir][1];
+            const key = `${nx},${ny}`;
+            
+            if (pixelSet.has(key)) {
+                current = {x: nx, y: ny};
+                dir = newDir;
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) break;
+        if (contour.length > edgePixels.length * 2) break;
+        
+    } while (current.x !== start.x || current.y !== start.y);
+    
+    return contour;
+}
+
+// ★ v5.6: 다중 폴리곤을 마스크로 변환
+function polygonsToMask(polys) {
+    if (!polys || polys.length === 0) return;
+    
+    mask = new Uint8Array(imgW * imgH);
+    
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imgW;
+    tempCanvas.height = imgH;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    tempCtx.fillStyle = '#fff';
+    
+    // 모든 폴리곤 그리기
+    for (const poly of polys) {
+        if (poly.length < 6) continue;
+        tempCtx.beginPath();
+        tempCtx.moveTo(poly[0], poly[1]);
+        for (let i = 2; i < poly.length; i += 2) {
+            tempCtx.lineTo(poly[i], poly[i + 1]);
+        }
+        tempCtx.closePath();
+        tempCtx.fill();
+    }
+    
+    const imageData = tempCtx.getImageData(0, 0, imgW, imgH);
+    const data = imageData.data;
+    for (let i = 0; i < imgW * imgH; i++) {
+        mask[i] = data[i * 4] > 128 ? 1 : 0;
+    }
+    
+    updateMaskStats();
+}
+
+// 단일 폴리곤용 (AI segment 등)
+function polygonToMask(poly) {
+    polygonsToMask([poly]);
+}
+
+// ============================================================
+// AI Segment
+// ============================================================
+async function runAI() {
+    if (!currentBbox || !img) {
+        toast('먼저 BBox를 그리세요', 'error');
+        return;
+    }
+    
+    document.getElementById('loading').classList.add('show');
+    
+    try {
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = currentBbox.w;
+        cropCanvas.height = currentBbox.h;
+        const cropCtx = cropCanvas.getContext('2d');
+        cropCtx.drawImage(img, 
+            currentBbox.x, currentBbox.y, currentBbox.w, currentBbox.h,
+            0, 0, currentBbox.w, currentBbox.h);
+        
+        const response = await fetch('/ai/segment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image: cropCanvas.toDataURL('image/jpeg', 0.9).split(',')[1]
+            })
+        });
+        
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+        
+        const globalPoly = result.polygon.map((v, i) => 
+            i % 2 === 0 ? v + currentBbox.x : v + currentBbox.y
+        );
+        
+        polygonToMask(globalPoly);
+        aiConfidence = result.confidence;
+        
+        toast('AI Segment 완료', 'success');
+        updateStatus();
+        render();
+        
+    } catch (e) {
+        toast('AI 오류: ' + e.message, 'error');
+    } finally {
+        document.getElementById('loading').classList.remove('show');
+    }
+}
+
+// ============================================================
+// Undo / Clear
+// ============================================================
+function saveUndo() {
+    undoStack.push({
+        bbox: currentBbox ? { ...currentBbox } : null,
+        mask: mask ? new Uint8Array(mask) : null,
+        annotations: JSON.parse(JSON.stringify(annotations))
+    });
+    if (undoStack.length > 30) undoStack.shift();
+}
+
+function undo() {
+    if (undoStack.length === 0) {
+        toast('Undo할 내용 없음', 'info');
+        return;
+    }
+    
+    const state = undoStack.pop();
+    currentBbox = state.bbox;
+    mask = state.mask;
+    annotations = state.annotations;
+    
+    updateAll();
+    render();
+    toast('Undo', 'info');
+}
+
+function clearCurrent() {
+    if (currentBbox || mask) {
+        currentBbox = null;
+        tempBbox = null;
+        bboxStart = null;
+        mask = null;
+        lastBrushPos = null;
+        aiConfidence = 0;
+        resizingBbox = false;
+        resizeHandle = null;
+        bboxDragging = false;
+        dragStart = null;
+        restoredAnnotation = null;
+        
+        document.getElementById('btnAiSeg').disabled = true;
+        updateAll();
+        render();
+        toast('현재 작업 취소됨', 'info');
+        return;
+    }
+    
+    if (annotations.length > 0) {
+        const last = annotations.pop();
+        
+        restoredAnnotation = last;
+        
+        currentBbox = {
+            x: last.bbox[0],
+            y: last.bbox[1],
+            w: last.bbox[2],
+            h: last.bbox[3]
+        };
+        
+        // ★ v5.6: 다중 폴리곤 복원
+        if (last.segmentation && last.segmentation.length > 0) {
+            polygonsToMask(last.segmentation);
+        }
+        
+        document.getElementById('btnAiSeg').disabled = false;
+        updateAll();
+        render();
+        toast('마지막 annotation 복원됨 - 수정 가능', 'info');
+    } else {
+        toast('취소할 작업 없음', 'info');
+    }
+}
+
+// ============================================================
+// 현재 결함 완성 - v5.6 다중 영역 지원
+// ============================================================
+function finish() {
+    let cls = null;
+    const classData = document.getElementById('classSelect').value;
+    
+    if (classData) {
+        cls = JSON.parse(classData);
+    } else if (restoredAnnotation) {
+        cls = {
+            id: restoredAnnotation.category_id,
+            name: restoredAnnotation.category_name
+        };
+    } else {
+        toast('클래스를 선택하세요', 'error');
+        return;
+    }
+    
+    if (!currentBbox) {
+        toast('BBox를 그리세요', 'error');
+        return;
+    }
+    
+    // ★ v5.6: 다중 폴리곤 처리
+    const polys = maskToPolygon();  // 배열의 배열
+    if (!polys || polys.length === 0 || polys[0].length < 6) {
+        toast('Segmentation을 그리세요', 'error');
+        return;
+    }
+    
+    saveUndo();
+    
+    // ★ v5.6: 모든 폴리곤의 면적 합산
+    let totalArea = 0;
+    for (const poly of polys) {
+        const n = poly.length / 2;
+        let area = 0;
+        for (let i = 0; i < n; i++) {
+            const j = (i + 1) % n;
+            area += poly[i * 2] * poly[j * 2 + 1];
+            area -= poly[j * 2] * poly[i * 2 + 1];
+        }
+        totalArea += Math.abs(area / 2);
+    }
+    totalArea = Math.round(totalArea);
+    
+    annotations.push({
+        id: annotations.length + 1,
+        category_id: cls.id,
+        category_name: cls.name,
+        bbox: [currentBbox.x, currentBbox.y, currentBbox.w, currentBbox.h],
+        segmentation: polys,  // ★ 모든 폴리곤 저장
+        area: totalArea,
+        iscrowd: 0,
+        ai: aiConfidence > 0,
+        regionCount: polys.length  // ★ 영역 개수 저장
+    });
+    
+    currentBbox = null;
+    mask = null;
+    aiConfidence = 0;
+    restoredAnnotation = null;
+    
+    document.getElementById('btnAiSeg').disabled = true;
+    updateAll();
+    render();
+    toast('✓ ' + cls.name + ' 추가됨 (' + polys.length + '개 영역)', 'success');
+}
+
+function deleteAnno(idx) {
+    saveUndo();
+    annotations.splice(idx, 1);
+    annotations.forEach((a, i) => a.id = i + 1);
+    updateAll();
+    render();
+}
+
+// ============================================================
+// UI 업데이트 - v5.6 수정
+// ============================================================
+function updateStatus() {
+    const hasClass = !!document.getElementById('classSelect').value;
+    const hasBbox = !!currentBbox;
+    
+    // ★ v5.6: 다중 폴리곤 체크
+    const polys = maskToPolygon();
+    const hasMask = polys && polys.length > 0 && polys[0].length >= 6;
+    
+    document.getElementById('step1').className = 'step ' + (hasClass ? 'done' : 'active');
+    document.getElementById('step2').className = 'step ' + (hasBbox ? 'done' : (hasClass ? 'active' : 'pending'));
+    document.getElementById('step3').className = 'step ' + (hasMask ? 'done' : (hasBbox ? 'active' : 'pending'));
+    document.getElementById('step4').className = 'step ' + ((hasClass && hasBbox && hasMask) ? 'active' : 'pending');
+}
+
+function updateAnnoList() {
+    document.getElementById('annoCount').textContent = annotations.length;
+    const list = document.getElementById('annoList');
+    
+    if (annotations.length === 0) {
+        list.innerHTML = '<div style="color:#8b949e;font-size:11px;padding:8px">없음</div>';
+        return;
+    }
+    
+    list.innerHTML = annotations.map((a, i) => `
+        <div class="anno-item">
+            <div class="title">${i + 1}. ${a.category_name}</div>
+            <div class="meta">bbox: [${a.bbox.join(', ')}]<br>area: ${a.area.toLocaleString()} px²</div>
+            <span class="badge ${a.ai ? 'ai' : 'manual'}">${a.ai ? '🤖 AI' : '🖌️ 수동'}</span>
+            ${a.regionCount > 1 ? `<span class="badge multi">🔗 ${a.regionCount}개 영역</span>` : ''}
+            <button class="danger" style="padding:4px 8px;font-size:9px;margin-top:6px" onclick="deleteAnno(${i})">삭제</button>
+        </div>
+    `).join('');
+}
+
+function updateSavedList() {
+    document.getElementById('savedCount').textContent = savedImages.length;
+    document.getElementById('sessionCount').textContent = savedImages.length;
+    const list = document.getElementById('savedList');
+    
+    if (savedImages.length === 0) {
+        list.innerHTML = '<div style="color:#8b949e;font-size:11px;padding:8px">저장된 이미지 없음</div>';
+        return;
+    }
+    
+    list.innerHTML = savedImages.map((s, i) => `
+        <div class="saved-item" id="saved-${i}">
+            <button class="delete-btn" onclick="requestDelete(${i})" title="삭제">✕</button>
+            <div class="filename">${s.file_name}</div>
+            <div class="info">
+                <span>🏷️ ${s.domain}</span>
+                <span>📝 ${s.anno_count}개</span>
+            </div>
+            <div class="info">
+                <span>🕐 ${s.timestamp}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateAll() {
+    updateStatus();
+    updateAnnoList();
+    updateMaskStats();
+    updateSavedList();
+}
+
+// ============================================================
+// 렌더링 - v5.6 다중 폴리곤 렌더링
+// ============================================================
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (!img) {
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '16px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('이미지를 불러오세요', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+    
+    ctx.save();
+    ctx.translate(panX, panY);
+    ctx.scale(scale, scale);
+    
+    ctx.drawImage(img, 0, 0);
+    
+    if (mask) {
+        ctx.fillStyle = 'rgba(139, 92, 246, 0.4)';
+        for (let y = 0; y < imgH; y++) {
+            let startX = -1;
+            for (let x = 0; x <= imgW; x++) {
+                const filled = x < imgW && mask[y * imgW + x];
+                if (filled && startX < 0) {
+                    startX = x;
+                } else if (!filled && startX >= 0) {
+                    ctx.fillRect(startX, y, x - startX, 1);
+                    startX = -1;
+                }
+            }
+        }
+    }
+    
+    const colors = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7'];
+    annotations.forEach((a, idx) => {
+        const color = colors[idx % colors.length];
+        
+        // ★ v5.6: 모든 폴리곤 렌더링
+        if (a.segmentation && a.segmentation.length > 0) {
+            for (const seg of a.segmentation) {
+                if (seg.length >= 6) {
+                    ctx.fillStyle = color + '40';
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2 / scale;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(seg[0], seg[1]);
+                    for (let i = 2; i < seg.length; i += 2) {
+                        ctx.lineTo(seg[i], seg[i + 1]);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        const [bx, by, bw, bh] = a.bbox;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5 / scale;
+        ctx.setLineDash([4 / scale, 4 / scale]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+        
+        ctx.fillStyle = color;
+        ctx.font = `bold ${11 / scale}px system-ui`;
+        const label = a.regionCount > 1 
+            ? `${idx + 1}: ${a.category_name} (${a.regionCount}개)`
+            : `${idx + 1}: ${a.category_name}`;
+        ctx.fillText(label, bx, by - 4 / scale);
+    });
+    
+    if (tempBbox) {
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2 / scale;
+        ctx.setLineDash([6 / scale, 4 / scale]);
+        ctx.strokeRect(tempBbox.x, tempBbox.y, tempBbox.w, tempBbox.h);
+        ctx.setLineDash([]);
+    }
+    
+    if (currentBbox) {
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 2 / scale;
+        ctx.strokeRect(currentBbox.x, currentBbox.y, currentBbox.w, currentBbox.h);
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+        ctx.fillRect(currentBbox.x, currentBbox.y, currentBbox.w, currentBbox.h);
+        
+        const handleSize = 8 / scale;
+        const handles = getBboxHandles(currentBbox, handleSize);
+        ctx.fillStyle = '#3b82f6';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1 / scale;
+        for (const h of handles) {
+            ctx.fillRect(h.x - handleSize/2, h.y - handleSize/2, handleSize, handleSize);
+            ctx.strokeRect(h.x - handleSize/2, h.y - handleSize/2, handleSize, handleSize);
+        }
+    }
+    
+    ctx.restore();
+}
+
+// ============================================================
+// 저장
+// ============================================================
+async function saveCurrentImage() {
+    if (!currentImageData) {
+        toast('저장할 이미지 없음', 'error');
+        return;
+    }
+    
+    if (annotations.length === 0) {
+        toast('완성된 annotation이 없습니다', 'error');
+        return;
+    }
+    
+    const domain = document.getElementById('domainSelect').value;
+    if (!domain) {
+        toast('도메인을 선택하세요', 'error');
+        return;
+    }
+    
+    document.getElementById('loading').classList.add('show');
+    
+    try {
+        const b64 = currentImageData.split(',')[1];
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let j = 0; j < binary.length; j++) {
+            bytes[j] = binary.charCodeAt(j);
+        }
+        const blob = new Blob([bytes], { type: 'image/jpeg' });
+        
+        const formData = new FormData();
+        formData.append('image', blob, currentFileName);
+        formData.append('domain', domain);
+        formData.append('width', imgW);
+        formData.append('height', imgH);
+        formData.append('annotations', JSON.stringify(annotations.map(a => ({
+            category_id: a.category_id,
+            bbox: a.bbox,
+            segmentation: a.segmentation,
+            area: a.area,
+            iscrowd: 0
+        }))));
+        
+        const res = await fetch('/save', { method: 'POST', body: formData });
+        const result = await res.json();
+        
+        if (!result.success) throw new Error(result.error);
+        
+        savedImages.push({
+            file_name: result.file_name,
+            image_id: result.image_id,
+            anno_count: annotations.length,
+            domain: domain,
+            timestamp: new Date().toLocaleTimeString('ko-KR')
+        });
+        
+        toast(`✓ 저장: ${result.file_name}`, 'success');
+        loadServerInfo();
+        
+        currentImageData = null;
+        currentFileName = null;
+        img = null;
+        imgW = 0;
+        imgH = 0;
+        mask = null;
+        currentBbox = null;
+        annotations = [];
+        undoStack = [];
+        
+        document.getElementById('fileInfo').style.display = 'none';
+        document.getElementById('fileInput').value = '';
+        
+        updateAll();
+        render();
+        
+        switchTab('saved');
+        
+    } catch (e) {
+        toast('저장 오류: ' + e.message, 'error');
+    } finally {
+        document.getElementById('loading').classList.remove('show');
+    }
+}
+
+// ============================================================
+// 삭제 기능
+// ============================================================
+function requestDelete(idx) {
+    deleteTarget = idx;
+    const item = savedImages[idx];
+    document.getElementById('deleteFileName').textContent = item.file_name;
+    document.getElementById('deleteModal').classList.add('show');
+}
+
+function closeDeleteModal() {
+    deleteTarget = null;
+    document.getElementById('deleteModal').classList.remove('show');
+}
+
+async function confirmDelete() {
+    if (deleteTarget === null) return;
+    
+    const item = savedImages[deleteTarget];
+    const elem = document.getElementById(`saved-${deleteTarget}`);
+    if (elem) elem.classList.add('deleting');
+    
+    closeDeleteModal();
+    document.getElementById('loading').classList.add('show');
+    
+    try {
+        const res = await fetch('/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_name: item.file_name,
+                image_id: item.image_id
+            })
+        });
+        
+        const result = await res.json();
+        
+        if (!result.success) throw new Error(result.error);
+        
+        savedImages.splice(deleteTarget, 1);
+        
+        toast(`✓ 삭제됨: ${item.file_name}`, 'success');
+        loadServerInfo();
+        updateSavedList();
+        
+    } catch (e) {
+        toast('삭제 오류: ' + e.message, 'error');
+        if (elem) elem.classList.remove('deleting');
+    } finally {
+        document.getElementById('loading').classList.remove('show');
+        deleteTarget = null;
+    }
+}
+
+// ============================================================
+// JSON 다운로드
+// ============================================================
+function downloadJson() {
+    if (!currentImageData || annotations.length === 0) {
+        toast('데이터 없음', 'error');
+        return;
+    }
+    
+    const data = {
+        images: [{
+            id: 1,
+            file_name: currentFileName,
+            width: imgW,
+            height: imgH
+        }],
+        annotations: annotations.map((a, i) => ({
+            id: i + 1,
+            image_id: 1,
+            category_id: a.category_id,
+            bbox: a.bbox,
+            segmentation: a.segmentation,
+            area: a.area,
+            iscrowd: 0
+        })),
+        categories: {{ALL_CATEGORIES}}
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = currentFileName.replace(/\.[^.]+$/, '') + '_annotations.json';
+    a.click();
+    
+    toast('JSON 다운로드됨', 'success');
+}
+
+function toast(msg, type = 'info') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    setTimeout(() => t.className = 'toast', 2500);
+}
+</script>
+</body>
+</html>
