@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# 프로젝트 데이터 (용량 큼, 서버별 로컬 관리)
+data/
+data_augmented/
+results/
+*.pth
+*.pt
+*.ckpt
+wandb/
