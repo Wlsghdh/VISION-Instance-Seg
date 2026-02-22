@@ -27,10 +27,10 @@ app = Flask(__name__)
 # ============================================================
 CATEGORY_CLASSES = {
     "Cable":   [{"id": 1, "name": "thunderbolt", "supercategory": "thunderbolt"}],
-    "Screw":   [{"id": 1, "name": "defect",      "supercategory": "defect"}],
+    "Screw":   [{"id": 0, "name": "defect",      "supercategory": "defect"}],
     "Casting": [
-        {"id": 1, "name": "Inclusoes", "supercategory": "defect"},
-        {"id": 2, "name": "Rechupe",   "supercategory": "defect"},
+        {"id": 0, "name": "Inclusoes", "supercategory": "defect"},
+        {"id": 1, "name": "Rechupe",   "supercategory": "defect"},
     ],
 }
 

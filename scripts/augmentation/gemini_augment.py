@@ -1,17 +1,25 @@
 """
 Gemini API - Defect Image Augmentation
-casting_Inclusoes (50), casting_Rechupe (50), screw_defect (100)
+casting_Inclusoes (150), casting_Rechupe (150), screw_defect (300)
 
-결함 위치만 변경하면서 증강 생성
+결함 위치만 변경하면서 증강 생성 (결함 크기는 원본과 동일하게 유지)
 
 사용법:
-  python generate_defects.py casting_Inclusoes
-  python generate_defects.py casting_Rechupe
-  python generate_defects.py screw_defect
-  python generate_defects.py all
+  cd /home/jjh0709/gitrepo/VISION-Instance-Seg/scripts/augmentation
+  python gemini_augment.py casting_Inclusoes
+  python gemini_augment.py casting_Rechupe
+  python gemini_augment.py screw_defect
+  python gemini_augment.py all
 
-백그라운드:
-  nohup python -u generate_defects.py casting_Inclusoes > casting_Inclusoes.log 2>&1 &
+백그라운드 (scripts/augmentation/ 디렉토리에서 실행):
+  cd /home/jjh0709/gitrepo/VISION-Instance-Seg/scripts/augmentation
+  nohup python -u gemini_augment.py casting_Inclusoes > casting_Inclusoes.log 2>&1 &
+  nohup python -u gemini_augment.py casting_Rechupe   > casting_Rechupe.log   2>&1 &
+  nohup python -u gemini_augment.py screw_defect      > screw_defect.log      2>&1 &
+
+  # PID 확인
+  jobs -l
+  tail -f casting_Inclusoes.log
 """
 
 from google import genai
@@ -29,7 +37,9 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 # ===== Gemini API 설정 =====
-GEMINI_API_KEY = "AIzaSyBy1c9mJQfBWOgJW3Nn8MTuMxVWtfwCqP8"
+# 환경변수로 관리: export GEMINI_API_KEY="your_key"
+import os
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyBlPF2KZXmvcHG_3IqKyugCym46-86dirY")
 
 BASE_REFERENCE_DIR = "reference_images"
 BASE_OUTPUT_DIR = "vision_ai_generated"
@@ -41,99 +51,146 @@ RATE_LIMIT_BACKOFF = 600  # 10분
 # ===== 결함 유형별 설정 =====
 DEFECT_CONFIGS = {
     "casting_Inclusoes": {
-        "total_images": 50,
+        "total_images": 150,
         "description": "Casting inclusion defect - non-metallic foreign material trapped inside a metal casting",
         "prompt_base": (
             "Generate a new image of a metal casting part with an inclusion defect. "
             "An inclusion defect means non-metallic foreign material (such as sand, slag, or oxide) "
-            "is trapped inside the metal casting surface. "
-            "The first reference image shows a NORMAL casting without any defect. "
-            "The other reference images show DEFECTIVE castings with inclusion defects "
-            "(the defect areas are highlighted in blue in the references). "
+            "is trapped inside the metal casting surface, appearing as a small dark spot or discoloration. "
+            "The FIRST image is a NORMAL casting without any defect — use it as the base appearance reference. "
+            "The REMAINING images are DEFECTIVE castings with inclusion defects "
+            "(defect areas are highlighted with a BLUE BORDER in the reference images — "
+            "the blue marking is only for reference, do NOT include it in the output). "
         ),
         "prompt_key_instruction": (
+            "MANDATORY: The output image MUST contain exactly one clearly visible inclusion defect "
+            "directly on the METAL CASTING SURFACE. "
+            "Do NOT generate a defect-free image — a clean output with no defect is WRONG and unacceptable. "
+            "The defect MUST be placed ON the metallic surface of the casting part, "
+            "not on the background or any non-metallic area. "
             "Generate a realistic casting image WITH an inclusion defect, but place the defect "
             "at a DIFFERENT POSITION than shown in the reference defect images. "
-            "The defect should look natural - a small dark spot, discoloration, or rough patch "
-            "where foreign material is embedded in the metal surface. "
+            "CRITICAL — DEFECT SIZE: "
+            "Look at the blue-bordered rectangles in the reference defect images. "
+            "The defect you generate must be THE EXACT SAME SIZE as those blue boxes, or SMALLER. "
+            "Those blue boxes are already very small relative to the full image — keep it that way. "
+            "Do NOT enlarge the defect. A correct defect is a tiny, barely-noticeable dark spot "
+            "or discoloration that blends into the casting surface. "
+            "If the defect takes up more than 2% of the image width, it is TOO LARGE — make it smaller. "
             "Do NOT include any blue markings or highlights in the generated image. "
-            "The defect should look like a real inclusion, not artificially marked. "
+            "The defect should look like a real inclusion: a tiny dark or discolored patch on the metal, "
+            "not artificially marked. "
         ),
         "prompt_variations": [
-            "Place the inclusion defect slightly to the upper-left area of the casting surface.",
-            "Place the inclusion defect near the center of the casting surface.",
-            "Place the inclusion defect slightly to the lower-right area of the casting surface.",
-            "Place the inclusion defect near the top edge of the casting surface.",
-            "Place the inclusion defect slightly to the upper-right area of the casting surface.",
-            "Place the inclusion defect near the bottom area of the casting surface.",
-            "Place the inclusion defect slightly to the left side of the casting surface.",
-            "Place the inclusion defect near the lower-left area of the casting surface.",
-            "Place the inclusion defect slightly off-center to the right.",
-            "Place the inclusion defect near the middle-left area of the casting surface.",
+            "Place the inclusion defect in the upper-left quadrant of the casting surface.",
+            "Place the inclusion defect slightly left of center on the casting surface.",
+            "Place the inclusion defect in the lower-right area of the casting surface.",
+            "Place the inclusion defect near the top-center of the casting surface.",
+            "Place the inclusion defect in the upper-right area of the casting surface.",
+            "Place the inclusion defect near the bottom-center of the casting surface.",
+            "Place the inclusion defect on the left side of the casting surface.",
+            "Place the inclusion defect in the lower-left area of the casting surface.",
+            "Place the inclusion defect slightly right of center on the casting surface.",
+            "Place the inclusion defect in the middle-right area of the casting surface.",
         ],
         "prompt_style": (
-            "Industrial inspection photography, consistent lighting, sharp focus on the casting surface. "
-            "Maintain the same casting part type, material, and overall appearance as the references. "
-            "CRITICAL: Keep the same casting shape and material. Only change the defect position. "
-            "Do NOT add blue markings. The defect must look completely natural and realistic."
+            "Industrial inspection photography, even and consistent lighting, sharp focus on the casting surface. "
+            "Maintain the exact same casting part shape, material texture, color, and background as the FIRST (normal) reference. "
+            "CRITICAL: Do NOT change the casting shape, size, or overall composition. "
+            "Only add one TINY, SUBTLE defect at a new position on the METAL SURFACE — the same size as the blue boxes in the references. "
+            "Do NOT add blue markings. The defect must be nearly invisible at first glance, "
+            "matching the size seen inside the blue reference boxes. "
+            "REMINDER: The final image MUST have a defect on the metal casting surface — "
+            "do not output a clean, defect-free image."
         ),
     },
 
     "casting_Rechupe": {
-        "total_images": 50,
+        "total_images": 150,
         "description": "Casting rechupe (shrinkage/porosity) defect - cavities or voids formed during metal solidification",
         "prompt_base": (
             "Generate a new image of a metal casting part with a rechupe (shrinkage) defect. "
-            "A rechupe defect is a cavity, void, or sunken area formed when the metal shrinks "
-            "during solidification, leaving holes or depressions on or inside the casting. "
-            "The first reference image shows a NORMAL casting without any defect. "
-            "The other reference images show DEFECTIVE castings with rechupe/shrinkage defects "
-            "(the defect areas are highlighted in blue in the references). "
+            "A rechupe defect is a small cavity, sunken area, or void formed when the metal shrinks "
+            "during solidification, leaving a small depression or hole on the casting surface. "
+            "The FIRST image is a NORMAL casting without any defect — use it as the base appearance reference. "
+            "The REMAINING images are DEFECTIVE castings with rechupe/shrinkage defects "
+            "(defect areas are highlighted with a BLUE BORDER in the reference images — "
+            "the blue marking is only for reference, do NOT include it in the output). "
         ),
         "prompt_key_instruction": (
+            "MANDATORY: The output image MUST contain exactly one visible rechupe/shrinkage defect. "
+            "CRITICAL PLACEMENT RULE: The defect MUST appear ONLY on the METAL CASTING SURFACE "
+            "(the metallic object itself) — absolutely NOT on the background. "
+            "Look at the FIRST (normal) reference image carefully: "
+            "the casting part is the metallic/grey object occupying the main area of the image; "
+            "the background is the non-metallic surrounding area (floor, wall, or backdrop). "
+            "The defect MUST be placed strictly within the visible boundaries of the metallic casting part. "
+            "The background area must remain completely clean and identical to the normal reference image — "
+            "no defects, marks, or changes in the background. "
             "Generate a realistic casting image WITH a rechupe/shrinkage defect, but place the defect "
             "at a DIFFERENT POSITION than shown in the reference defect images. "
-            "The defect should look natural - a small cavity, depression, sunken area, or porosity "
-            "where the metal failed to fill properly during casting. "
+            "CRITICAL — DEFECT SIZE: "
+            "Look at the blue-bordered rectangles in the reference defect images. "
+            "The defect you generate must be THE EXACT SAME SIZE as those blue boxes, or SMALLER. "
+            "Those blue boxes are already very small relative to the full image — keep it that way. "
+            "Do NOT enlarge the defect. A correct defect is a small cavity, pit, or sunken spot "
+            "that is barely noticeable on the casting surface. "
+            "If the defect takes up more than 4% of the image width, it is TOO LARGE — make it smaller. "
             "Do NOT include any blue markings or highlights in the generated image. "
-            "The defect should look like a real shrinkage void, not artificially marked. "
+            "The defect should look like a real shrinkage void: a small pit or depression on the metal surface, "
+            "not artificially marked, and never in the background. "
         ),
         "prompt_variations": [
-            "Place the shrinkage defect slightly to the upper-left area of the casting surface.",
-            "Place the shrinkage defect near the center of the casting surface.",
-            "Place the shrinkage defect slightly to the lower-right area of the casting surface.",
-            "Place the shrinkage defect near the top edge of the casting surface.",
-            "Place the shrinkage defect slightly to the upper-right area of the casting surface.",
-            "Place the shrinkage defect near the bottom area of the casting surface.",
-            "Place the shrinkage defect slightly to the left side of the casting surface.",
-            "Place the shrinkage defect near the lower-left area of the casting surface.",
-            "Place the shrinkage defect slightly off-center to the right.",
-            "Place the shrinkage defect near the middle-left area of the casting surface.",
+            "Place the shrinkage defect in the upper-left area of the metal casting part surface (not the background).",
+            "Place the shrinkage defect slightly left of center on the metal casting part surface (not the background).",
+            "Place the shrinkage defect in the lower-right area of the metal casting part surface (not the background).",
+            "Place the shrinkage defect near the top-center of the metal casting part surface (not the background).",
+            "Place the shrinkage defect in the upper-right area of the metal casting part surface (not the background).",
+            "Place the shrinkage defect near the bottom-center of the metal casting part surface (not the background).",
+            "Place the shrinkage defect on the left side of the metal casting part surface (not the background).",
+            "Place the shrinkage defect in the lower-left area of the metal casting part surface (not the background).",
+            "Place the shrinkage defect slightly right of center on the metal casting part surface (not the background).",
+            "Place the shrinkage defect in the middle-right area of the metal casting part surface (not the background).",
         ],
         "prompt_style": (
-            "Industrial inspection photography, consistent lighting, sharp focus on the casting surface. "
-            "Maintain the same casting part type, material, and overall appearance as the references. "
-            "CRITICAL: Keep the same casting shape and material. Only change the defect position. "
-            "Do NOT add blue markings. The defect must look completely natural and realistic."
+            "Industrial inspection photography, even and consistent lighting, sharp focus on the casting surface. "
+            "Maintain the exact same casting part shape, material texture, color, and background as the FIRST (normal) reference. "
+            "CRITICAL: Do NOT change the casting shape, size, or overall composition. "
+            "Only add one TINY, SUBTLE defect on the METAL CASTING PART SURFACE — the same size as the blue boxes in the references. "
+            "The defect must be ON the metallic object, NOT anywhere in the background. "
+            "The background must look exactly as in the normal reference image. "
+            "Do NOT add blue markings. The defect must be nearly invisible at first glance, "
+            "matching the size seen inside the blue reference boxes."
         ),
     },
 
     "screw_defect": {
-        "total_images": 100,
+        "total_images": 300,
         "description": "Screw defect - various manufacturing defects on screws",
         "prompt_base": (
             "Generate a new image of a screw with a manufacturing defect. "
-            "The first reference image shows a NORMAL screw without any defect. "
-            "The other reference images show DEFECTIVE screws with visible manufacturing defects "
-            "(the defect areas are highlighted in blue in the references). "
+            "The FIRST image is a NORMAL screw without any defect — use it as the base appearance reference. "
+            "The REMAINING images are DEFECTIVE screws with visible manufacturing defects. "
+            "WARNING: The reference defect images contain BLUE RECTANGLE BORDERS drawn around the defect areas. "
+            "These blue rectangles are annotation markers added for reference ONLY — "
+            "they are NOT part of the real screw image and must NEVER appear in the output. "
         ),
         "prompt_key_instruction": (
+            "ABSOLUTE RULE — NO BLUE MARKINGS: "
+            "The output image must contain ZERO blue rectangles, blue borders, blue boxes, "
+            "blue outlines, or any blue annotation markings of any kind. "
+            "The blue rectangles visible in the reference images are annotation tools used to mark defect locations — "
+            "they do not exist on the actual screw. Generate the screw as it would appear in reality, "
+            "with NO overlaid graphics, NO colored boxes, NO highlighted regions. "
             "Generate a realistic screw image WITH a manufacturing defect, but place the defect "
-            "at a DIFFERENT POSITION than shown in the reference defect images. "
-            "The defect should look natural - a crack, burr, deformation, missing thread, "
-            "surface damage, or other manufacturing flaw on the screw. "
-            "Do NOT include any blue markings or highlights in the generated image. "
-            "The defect should look like a real manufacturing defect, not artificially marked. "
+            "at a DIFFERENT POSITION along the screw than shown in the reference defect images. "
+            "CRITICAL — DEFECT SIZE: "
+            "Use the blue-bordered rectangles in the reference images only to judge the SIZE of the defect — "
+            "not to copy their appearance. The defect must be the same size as those boxes, or SMALLER. "
+            "The defect should be subtle: a small crack, burr, nick, or surface damage on one section of thread. "
+            "If the defect spans more than 20% of the screw length, it is TOO LARGE — make it smaller. "
+            "The defect must look like a real manufacturing flaw on the screw surface, "
+            "with no blue color, no box, no border, no marking of any kind around it. "
         ),
         "prompt_variations": [
             "Place the defect on the upper portion of the screw shaft/threads.",
@@ -149,9 +206,13 @@ DEFECT_CONFIGS = {
         ],
         "prompt_style": (
             "Industrial inspection photography, consistent lighting, sharp focus on the screw surface. "
-            "Maintain the same screw type, size, and overall appearance as the references. "
-            "CRITICAL: Keep the same screw shape, thread pattern, and material. Only change the defect position. "
-            "Do NOT add blue markings. The defect must look completely natural and realistic."
+            "Maintain the exact same screw type, size, thread pattern, and overall appearance as the FIRST (normal) reference. "
+            "CRITICAL: Keep the same screw shape, material, and background. "
+            "Only add one SMALL physical defect on the screw surface at a new position. "
+            "The final image must look like a real photograph with absolutely no overlaid graphics, "
+            "no blue rectangles, no colored borders, no annotation marks of any kind. "
+            "The defect must be subtle and small, matching the SIZE (not the appearance) "
+            "of what was shown inside the blue reference boxes."
         ),
     },
 }
@@ -183,7 +244,7 @@ def save_progress(progress, defect_type):
 
 # ===== 이미지 로드 =====
 def load_reference_images(defect_type):
-    """레퍼런스 이미지 로드 - 정렬하여 첫 번째가 정상, 나머지가 결함"""
+    """레퍼런스 이미지 로드 - 정렬하여 첫 번째가 정상, 나머지가 결함 (전부 로드)"""
     ref_dir = Path(BASE_REFERENCE_DIR) / defect_type
 
     reference_images = sorted(
@@ -198,8 +259,8 @@ def load_reference_images(defect_type):
     if not reference_images:
         print(f"ERROR: No images in '{ref_dir}/'", flush=True)
         print(f"Please add reference images:", flush=True)
-        print(f"  - 1st image: Normal (no defect)", flush=True)
-        print(f"  - 2nd~5th images: Defect images (blue-marked)", flush=True)
+        print(f"  - 1st image: Normal (no defect) — named so it sorts first (e.g. normal_00.jpg)", flush=True)
+        print(f"  - 2nd~10th images: Defect images with blue border bbox (ref_01_*.jpg ...)", flush=True)
         exit(1)
 
     if len(reference_images) < 2:
@@ -225,7 +286,7 @@ def load_reference_images(defect_type):
 
 # ===== 프롬프트 생성 =====
 def generate_prompt(config, index):
-    """결함 유형별 프롬프트 생성 - 위치 변화 중심"""
+    """결함 유형별 프롬프트 생성 - 위치 변화 중심, 크기 강제 제약 포함"""
     variation = config["prompt_variations"][index % len(config["prompt_variations"])]
 
     prompt = (
@@ -278,9 +339,13 @@ def run_generation(defect_type, count_override=None):
     print("=" * 80, flush=True)
 
     # API 클라이언트
+    if not GEMINI_API_KEY:
+        print("ERROR: GEMINI_API_KEY 환경변수가 설정되지 않았습니다.", flush=True)
+        print("  export GEMINI_API_KEY='your_new_api_key'", flush=True)
+        exit(1)
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # 레퍼런스 이미지 로드
+    # 레퍼런스 이미지 로드 (전부)
     print(f"\n[1/2] Loading reference images for {defect_type}...", flush=True)
     ref_data_list = load_reference_images(defect_type)
     print(f"  Total {len(ref_data_list)} reference images loaded", flush=True)
@@ -326,39 +391,39 @@ def run_generation(defect_type, count_override=None):
                 # 프롬프트 생성
                 prompt = generate_prompt(config, i)
 
-                # 모든 레퍼런스 이미지를 함께 전송
-                # 순서: normal image, defect images, text prompt
+                # ── API contents 구성 ──────────────────────────────────────────────
+                # 순서: [정상 이미지] [결함 이미지 1~9장] [텍스트 프롬프트]
+                # 결함 이미지는 매 호출마다 회전(rotating) 방식으로 일부 선택
                 contents = []
 
-                # 정상 이미지 (첫 번째)
+                # 1) 정상 이미지 (항상 포함)
                 normal_ref = ref_data_list[0]
                 contents.append(types.Part.from_bytes(
                     data=normal_ref['bytes'],
                     mime_type='image/png'
                 ))
 
-                # 결함 이미지들 (순환하며 1~2장 선택)
-                defect_refs = ref_data_list[1:]  # 결함 이미지만
-                # 매 생성마다 다른 결함 레퍼런스 조합 사용
-                defect_idx = i % len(defect_refs)
-                selected_defect = defect_refs[defect_idx]
-                contents.append(types.Part.from_bytes(
-                    data=selected_defect['bytes'],
-                    mime_type='image/png'
-                ))
+                # 2) 결함 이미지 - 전체를 순환하며 최대 4장 선택
+                #    (토큰 절약: 4장으로 제한, 매 호출마다 다른 조합)
+                defect_refs = ref_data_list[1:]
+                n_defect = len(defect_refs)
+                MAX_DEFECT_REFS = min(4, n_defect)  # 최대 4장
 
-                # 추가 결함 레퍼런스 (있으면 하나 더)
-                if len(defect_refs) > 1:
-                    extra_idx = (i + 1) % len(defect_refs)
-                    if extra_idx != defect_idx:
-                        extra_defect = defect_refs[extra_idx]
-                        contents.append(types.Part.from_bytes(
-                            data=extra_defect['bytes'],
-                            mime_type='image/png'
-                        ))
+                # 시작 인덱스를 i에 따라 이동 → 매 호출마다 다른 조합
+                start_ref = i % n_defect
+                selected_indices = [(start_ref + k) % n_defect for k in range(MAX_DEFECT_REFS)]
 
-                # 텍스트 프롬프트
+                for ref_idx in selected_indices:
+                    ref = defect_refs[ref_idx]
+                    contents.append(types.Part.from_bytes(
+                        data=ref['bytes'],
+                        mime_type='image/png'
+                    ))
+
+                # 3) 텍스트 프롬프트
                 contents.append(prompt)
+
+                print(f"  Refs: normal + {len(selected_indices)} defect refs (indices {selected_indices})", flush=True)
 
                 # Gemini API 호출
                 response = client.models.generate_content(
@@ -458,7 +523,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--count", type=int, default=None,
-        help="Override image count (e.g. --count 10 for test run)"
+        help="Override image count (e.g. --count 5 for test run)"
     )
     args = parser.parse_args()
 
