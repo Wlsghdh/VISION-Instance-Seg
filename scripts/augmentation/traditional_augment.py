@@ -2,11 +2,20 @@
 전통적 증강 스크립트 (Traditional Augmentation)
 - Albumentations 기반 증강 (segmentation polygon 자동 변환 포함)
 - 마스크 기반 증강으로 polygon 정확도 보장
-- 출력: data_augmented/{category}/traditional_aug/{images/, annotations.json}
+- 기본 출력: data_augmented/{category}/traditional_aug/{images/, annotations.json}
 
-사용법:
+사용법 (기본 - 카테고리 원본에서 증강):
     python scripts/augmentation/traditional_augment.py \
-        --category Cable \
+        --category Screw \
+        --n_augment 2750 \
+        --seed 42
+
+사용법 (커스텀 입출력 - 실험 조건 5 등):
+    python scripts/augmentation/traditional_augment.py \
+        --category Screw \
+        --input_dir /path/to/merged/images \
+        --ann_file  /path/to/merged/annotations.json \
+        --output_dir /path/to/output \
         --n_augment 2750 \
         --seed 42
 """
@@ -184,13 +193,34 @@ def augment_single(img_path, annotations, aug_pipeline):
 # ============================================================
 # 메인 증강 함수
 # ============================================================
-def run_augmentation(category, n_augment, seed):
+def run_augmentation(category, n_augment, seed,
+                     input_dir=None, ann_file=None, output_dir=None):
+    """
+    Args:
+        category   : Cable / Screw / Casting (카테고리 필터 설정용)
+        n_augment  : 생성할 이미지 수
+        seed       : 랜덤 시드
+        input_dir  : 이미지 디렉토리 (None → data/{category}/train/images)
+        ann_file   : annotations.json 경로 (None → data/{category}/train/annotations.json)
+        output_dir : 출력 디렉토리 (None → data_augmented/{category}/traditional_aug)
+    """
     BASE = Path('/home/jjh0709/gitrepo/VISION-Instance-Seg')
-    TRAIN_DIR = BASE / 'data' / category / 'train'
-    IMAGES_DIR = TRAIN_DIR / 'images'
-    ANN_FILE = TRAIN_DIR / 'annotations.json'
 
-    OUT_DIR = BASE / 'data_augmented' / category / 'traditional_aug'
+    if input_dir is None:
+        IMAGES_DIR = BASE / 'data' / category / 'train' / 'images'
+    else:
+        IMAGES_DIR = Path(input_dir)
+
+    if ann_file is None:
+        ANN_FILE = BASE / 'data' / category / 'train' / 'annotations.json'
+    else:
+        ANN_FILE = Path(ann_file)
+
+    if output_dir is None:
+        OUT_DIR = BASE / 'data_augmented' / category / 'traditional_aug'
+    else:
+        OUT_DIR = Path(output_dir)
+
     OUT_IMAGES = OUT_DIR / 'images'
     OUT_IMAGES.mkdir(parents=True, exist_ok=True)
 
@@ -200,7 +230,8 @@ def run_augmentation(category, n_augment, seed):
 
     print(f"\n{'='*60}")
     print(f"전통적 증강: {category}")
-    print(f"  입력: {TRAIN_DIR}")
+    print(f"  이미지 입력: {IMAGES_DIR}")
+    print(f"  Annotation : {ANN_FILE}")
     print(f"  출력: {OUT_DIR}")
     print(f"  생성 목표: {n_augment}장")
     print(f"  시드: {seed}")
@@ -252,7 +283,7 @@ def run_augmentation(category, n_augment, seed):
     pbar = tqdm(total=target, desc="증강 생성")
 
     for img_idx, orig_img in enumerate(shuffled):
-        img_path = IMAGES_DIR / orig_img['file_name']
+        img_path = Path(IMAGES_DIR) / orig_img['file_name']
         if not img_path.exists():
             print(f"  [SKIP] 파일 없음: {img_path}")
             continue
@@ -334,22 +365,43 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
+  # 기본 (원본 train 데이터에서 증강)
   python scripts/augmentation/traditional_augment.py \\
-      --category Cable \\
+      --category Screw \\
+      --n_augment 2750 \\
+      --seed 42
+
+  # 커스텀 입출력 (실험 조건 5: 원본+gen_ai 합친 데이터에 전통 증강)
+  python scripts/augmentation/traditional_augment.py \\
+      --category Screw \\
+      --input_dir /path/to/merged/images \\
+      --ann_file  /path/to/merged/annotations.json \\
+      --output_dir /path/to/output_dir \\
       --n_augment 2750 \\
       --seed 42
         """
     )
     parser.add_argument('--category', type=str, required=True,
                         choices=['Cable', 'Screw', 'Casting'],
-                        help='대상 카테고리 (Cable / Screw / Casting)')
+                        help='대상 카테고리 (Cable / Screw / Casting) — 카테고리 ID 필터에 사용')
     parser.add_argument('--n_augment', type=int, default=2750,
                         help='생성할 증강 이미지 수 (기본: 2750)')
     parser.add_argument('--seed', type=int, default=42,
                         help='랜덤 시드 (기본: 42)')
+    parser.add_argument('--input_dir', type=str, default=None,
+                        help='이미지 입력 디렉토리 (기본: data/{category}/train/images)')
+    parser.add_argument('--ann_file', type=str, default=None,
+                        help='annotations.json 경로 (기본: data/{category}/train/annotations.json)')
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help='출력 디렉토리 (기본: data_augmented/{category}/traditional_aug)')
     args = parser.parse_args()
 
-    run_augmentation(args.category, args.n_augment, args.seed)
+    run_augmentation(
+        args.category, args.n_augment, args.seed,
+        input_dir=args.input_dir,
+        ann_file=args.ann_file,
+        output_dir=args.output_dir,
+    )
 
 
 if __name__ == '__main__':

@@ -342,6 +342,7 @@ const serverConfig = {{ SERVER_CONFIG | safe }};
 // 서버 이미지 관련
 let isServerImage = false;      // 현재 이미지가 서버에서 로드된 것인지
 let serverImageFilename = null; // 서버 이미지 파일명
+let serverImageCategory = null; // 서버 이미지 카테고리
 let allServerFiles = [];        // 서버 이미지 목록 캐시
 
 // ============================================================
@@ -374,7 +375,8 @@ window.onload = () => {
     // 서버 설정 배너 표시
     const banner = document.getElementById('serverConfigBanner');
     if (banner && serverConfig) {
-        banner.textContent = `카테고리: ${serverConfig.category}  |  Split: ${serverConfig.split}`;
+        const catLabel = serverConfig.category === 'all' ? '전체 (Cable + Screw + Casting)' : serverConfig.category;
+        banner.textContent = `카테고리: ${catLabel}  |  Split: ${serverConfig.split}`;
     }
 };
 
@@ -526,14 +528,15 @@ function renderImgList(files) {
         return;
     }
     list.innerHTML = files.map(f => `
-        <div class="img-list-item ${f.annotated ? 'annotated' : ''}" onclick="selectServerImage('${f.name}')">
+        <div class="img-list-item ${f.annotated ? 'annotated' : ''}" onclick="selectServerImage('${f.name}', '${f.category || ''}')">
             <span>${f.name}</span>
+            <span style="font-size:9px;color:#8b949e;margin-right:4px">[${f.category || ''}]</span>
             <span class="badge-${f.annotated ? 'ann' : 'new'}">${f.annotated ? '라벨됨' : '미라벨'}</span>
         </div>
     `).join('');
 }
 
-async function selectServerImage(filename) {
+async function selectServerImage(filename, category) {
     closeImgModal();
     document.getElementById('loading').classList.add('show');
 
@@ -550,6 +553,7 @@ async function selectServerImage(filename) {
                 currentFileName = filename;
                 isServerImage = true;
                 serverImageFilename = filename;
+                serverImageCategory = category || null;
                 resolve();
             };
             newImg.onerror = reject;
@@ -569,12 +573,16 @@ async function selectServerImage(filename) {
         document.getElementById('fileName').textContent = filename;
         document.getElementById('fileSize').textContent = imgW + ' × ' + imgH;
 
-        // 도메인 자동 선택
-        for (const d of Object.keys(categories)) {
-            document.getElementById('domainSelect').value = d;
-            loadClasses();
-            break;
+        // 도메인 자동 선택 (category 우선, 없으면 파일명으로 추측)
+        const matchDomain = category || Object.keys(categories).find(
+            d => filename.toLowerCase().startsWith(d.toLowerCase())
+        );
+        if (matchDomain && categories[matchDomain]) {
+            document.getElementById('domainSelect').value = matchDomain;
+        } else {
+            document.getElementById('domainSelect').value = Object.keys(categories)[0];
         }
+        loadClasses();
 
         // 기존 annotations 로드
         const annRes = await fetch(`/annotations/for/${encodeURIComponent(filename)}`);
@@ -1559,6 +1567,7 @@ async function saveCurrentImage() {
             // ── 서버 이미지: /save/existing 사용 (파일 업로드 없음) ──
             const payload = {
                 file_name: serverImageFilename,
+                category: serverImageCategory,
                 width: imgW,
                 height: imgH,
                 annotations: annotations.map(a => ({
@@ -1670,7 +1679,8 @@ async function confirmDelete() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 file_name: item.file_name,
-                image_id: item.image_id
+                image_id: item.image_id,
+                category: item.domain || null
             })
         });
         
