@@ -50,26 +50,46 @@ CATEGORY_CONFIG = {
 def create_augmentation_pipeline():
     """
     Albumentations 2.x 호환 증강 파이프라인
-    geometric: 마스크와 함께 변환
-    pixel-level: 이미지만 변환
+
+    적용 증강 종류:
+      - 상하좌우반전 (HorizontalFlip, VerticalFlip)
+      - 회전 (Rotate, ShiftScaleRotate)
+      - 색채도 변환 (HueSaturationValue, RandomBrightnessContrast)
+      - 노이즈 (GaussNoise, GaussianBlur)
+      - 회색마스킹 (CoarseDropout — 회색(128) 패치로 랜덤 영역 마스킹)
     """
     return A.Compose([
-        # Geometric (마스크 자동 변환)
+        # ── 상하좌우 반전 ─────────────────────────────────────
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.3),
-        A.Rotate(limit=15, p=0.5),
+
+        # ── 회전 ──────────────────────────────────────────────
+        A.Rotate(limit=20, p=0.6),
         A.ShiftScaleRotate(
             shift_limit=0.1,
             scale_limit=0.1,
             rotate_limit=15,
             fill=0,
-            p=0.5
+            p=0.4
         ),
-        # Pixel-level (마스크 불변)
-        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-        A.HueSaturationValue(hue_shift_limit=10, sat_shift_limit=20, val_shift_limit=10, p=0.3),
-        A.GaussNoise(std_range=(0.02, 0.10), p=0.3),
-        A.GaussianBlur(blur_limit=(3, 5), p=0.3),
+
+        # ── 색채도 변환 ───────────────────────────────────────
+        A.HueSaturationValue(hue_shift_limit=15, sat_shift_limit=30, val_shift_limit=15, p=0.5),
+        A.RandomBrightnessContrast(brightness_limit=0.25, contrast_limit=0.25, p=0.5),
+
+        # ── 노이즈 ────────────────────────────────────────────
+        A.GaussNoise(std_range=(0.02, 0.12), p=0.4),
+        A.GaussianBlur(blur_limit=(3, 7), p=0.3),
+
+        # ── 회색마스킹 (CoarseDropout) ────────────────────────
+        # 이미지 일부 영역을 회색(128)으로 덮어 노출 강건성 향상
+        A.CoarseDropout(
+            num_holes_range=(1, 3),
+            hole_height_range=(0.05, 0.15),
+            hole_width_range=(0.05, 0.15),
+            fill=128,
+            p=0.4
+        ),
     ])
 
 

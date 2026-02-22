@@ -3,41 +3,23 @@
 
 5가지 실험 조건:
   cond1: 원본 25장
-  cond2: 원본 25 + 전통 증강 250
+  cond2: 원본 25 + 전통 증강 250  (원본에서 전통 증강)
   cond3: 원본 25 + 생성AI 250
-  cond4: 원본 25 + 생성AI 250 + 전통 250
-  cond5: 원본 25 + 생성AI 250 + 전통 2,750
+  cond4: 원본 25 + 생성AI 250 + 전통 250  (원본에서 전통 증강)
+  cond5: 원본 25 + 생성AI 250 + 전통 2,750  ★(원본+gen_ai 합친 275장에서 전통 증강)
 
 사용법:
     # 조건 3: Screw, 원본 25 + gen_ai 250
     python scripts/data_utils/merge_dataset.py \\
-        --category Screw \\
-        --condition cond3 \\
-        --n_original 25 \\
-        --n_genai 250
+        --category Screw --condition cond3
 
-    # 조건 4: Casting, 원본 25 + gen_ai 250 + traditional 250
+    # 조건 5: Screw (원본 25 + gen_ai 250 → 전통 증강 2750)
     python scripts/data_utils/merge_dataset.py \\
-        --category Casting \\
-        --condition cond4 \\
-        --n_original 25 \\
-        --n_genai 250 \\
-        --n_traditional 250
-
-    # 조건 5: Screw, 원본 25 + gen_ai 250 + traditional 2750
-    python scripts/data_utils/merge_dataset.py \\
-        --category Screw \\
-        --condition cond5 \\
-        --n_original 25 \\
-        --n_genai 250 \\
-        --n_traditional 2750
+        --category Screw --condition cond5
 
     # 전체 카테고리 한번에
     python scripts/data_utils/merge_dataset.py \\
-        --category all \\
-        --condition cond3 \\
-        --n_original 25 \\
-        --n_genai 250
+        --category all --condition cond5
 
 출력 위치: results/experiment2/{category}/{condition}/
            ├── images/
@@ -48,9 +30,15 @@ import argparse
 import json
 import random
 import shutil
+import sys
+import tempfile
 from pathlib import Path
 
 BASE = Path('/home/jjh0709/gitrepo/VISION-Instance-Seg')
+
+# traditional_augment 임포트용 경로 추가
+sys.path.insert(0, str(BASE / 'scripts' / 'augmentation'))
+from traditional_augment import run_augmentation as _run_traditional_aug  # noqa: E402
 
 CATEGORY_CLASSES = {
     "Cable":   [{"id": 1, "name": "thunderbolt", "supercategory": "thunderbolt"}],
@@ -72,8 +60,8 @@ def load_coco(ann_path):
 
 def sample_images(data, images_dir, n, seed):
     """
-    annotations.json에서 annotation이 있는 이미지 중 n장 무작위 샘플.
-    n이 전체보다 크면 전체를 반환.
+    annotation이 있는 이미지 중 n장 무작위 샘플.
+    n >= 전체 이미지 수면 전체 반환.
     """
     img_id_with_ann = {a["image_id"] for a in data["annotations"]}
     valid_images = [
@@ -136,13 +124,13 @@ def merge_sources(sources, out_dir, categories):
             if ann["image_id"] not in img_id_map:
                 continue
             all_annotations.append({
-                "id":          next_ann_id,
-                "image_id":    img_id_map[ann["image_id"]],
-                "category_id": ann["category_id"],
-                "bbox":        ann["bbox"],
+                "id":           next_ann_id,
+                "image_id":     img_id_map[ann["image_id"]],
+                "category_id":  ann["category_id"],
+                "bbox":         ann["bbox"],
                 "segmentation": ann.get("segmentation", []),
-                "area":        ann.get("area", 0),
-                "iscrowd":     ann.get("iscrowd", 0),
+                "area":         ann.get("area", 0),
+                "iscrowd":      ann.get("iscrowd", 0),
             })
             next_ann_id += 1
 
@@ -155,6 +143,12 @@ def merge_sources(sources, out_dir, categories):
         json.dump(coco_out, f)
 
     return len(all_images), len(all_annotations)
+
+
+def write_coco(images, anns, categories, ann_path):
+    """작은 COCO JSON 저장 헬퍼"""
+    with open(ann_path, "w") as f:
+        json.dump({"images": images, "annotations": anns, "categories": categories}, f)
 
 
 # ============================================================
@@ -172,7 +166,114 @@ def get_paths(category):
 
 
 # ============================================================
-# 조건별 병합 실행
+# 조건 5 전용: (원본 + gen_ai) → 전통 증강 2750
+# ============================================================
+def run_cond5_traditional(category, n_original, n_genai, n_traditional, seed, out_dir):
+    """
+    cond5 전용:
+    1. 원본 25 + gen_ai 250 을 임시 디렉토리에 합침
+    2. 그 합친 데이터를 소스로 전통 증강 2750장 생성
+    3. (원본 25 + gen_ai 250 + 전통 2750) 최종 병합
+    """
+    paths = get_paths(category)
+    cats  = CATEGORY_CLASSES[category]
+
+    # ── step 1: 원본 + gen_ai 수집 ───────────────────────────
+    if not paths["original_ann"].exists():
+        print(f"  [ERROR] 원본 annotations.json 없음: {paths['original_ann']}")
+        return
+    if not paths["genai_ann"].exists():
+        print(f"  [ERROR] gen_ai annotations.json 없음: {paths['genai_ann']}")
+        return
+
+    orig_data  = load_coco(paths["original_ann"])
+    genai_data = load_coco(paths["genai_ann"])
+
+    orig_imgs,  orig_anns  = sample_images(orig_data,  paths["original_images"], n_original, seed)
+    genai_imgs, genai_anns = sample_images(genai_data, paths["genai_images"],    n_genai,    seed + 1)
+
+    print(f"  원본: {len(orig_imgs)}장 (요청 {n_original})")
+    print(f"  gen_ai: {len(genai_imgs)}장 (요청 {n_genai})")
+
+    # ── step 2: 임시 디렉토리에 원본+gen_ai 합침 ─────────────
+    tmp_dir = Path(out_dir) / "_tmp_cond5_src"
+    tmp_imgs_dir = tmp_dir / "images"
+    tmp_imgs_dir.mkdir(parents=True, exist_ok=True)
+
+    combined_images = []
+    combined_anns   = []
+    next_img_id = 1
+    next_ann_id = 1
+
+    for src_imgs_dir, imgs, anns in [
+        (paths["original_images"], orig_imgs,  orig_anns),
+        (paths["genai_images"],    genai_imgs, genai_anns),
+    ]:
+        id_map = {}
+        for img in imgs:
+            src = Path(src_imgs_dir) / img["file_name"]
+            dst = tmp_imgs_dir / img["file_name"]
+            if dst.exists():
+                stem = Path(img["file_name"]).stem
+                ext  = Path(img["file_name"]).suffix
+                dst  = tmp_imgs_dir / f"{stem}_{next_img_id:06d}{ext}"
+            shutil.copy2(str(src), str(dst))
+            id_map[img["id"]] = next_img_id
+            combined_images.append({
+                "id": next_img_id, "file_name": dst.name,
+                "width": img["width"], "height": img["height"],
+            })
+            next_img_id += 1
+        for ann in anns:
+            if ann["image_id"] not in id_map:
+                continue
+            combined_anns.append({
+                "id": next_ann_id, "image_id": id_map[ann["image_id"]],
+                "category_id": ann["category_id"], "bbox": ann["bbox"],
+                "segmentation": ann.get("segmentation", []),
+                "area": ann.get("area", 0), "iscrowd": ann.get("iscrowd", 0),
+            })
+            next_ann_id += 1
+
+    tmp_ann_path = tmp_dir / "annotations.json"
+    write_coco(combined_images, combined_anns, cats, tmp_ann_path)
+    print(f"  임시 소스: {len(combined_images)}장 → {tmp_dir}")
+
+    # ── step 3: 임시 디렉토리에서 전통 증강 실행 ─────────────
+    trad_out = Path(out_dir) / "_trad_aug"
+    print(f"  전통 증강 시작: {n_traditional}장 생성 중...")
+    _run_traditional_aug(
+        category     = category,
+        n_augment    = n_traditional,
+        seed         = seed + 2,
+        input_dir    = str(tmp_imgs_dir),
+        ann_file     = str(tmp_ann_path),
+        output_dir   = str(trad_out),
+    )
+    trad_ann_path = trad_out / "annotations.json"
+    if not trad_ann_path.exists():
+        print("  [ERROR] 전통 증강 실패")
+        return
+    trad_data = load_coco(trad_ann_path)
+    print(f"  전통 증강 완료: {len(trad_data['images'])}장")
+
+    # ── step 4: 최종 병합 (원본 + gen_ai + 전통) ─────────────
+    sources = [
+        (paths["original_images"], orig_imgs,  orig_anns),
+        (paths["genai_images"],    genai_imgs, genai_anns),
+        (trad_out / "images",      trad_data["images"], trad_data["annotations"]),
+    ]
+    n_imgs, n_anns = merge_sources(sources, out_dir, cats)
+    print(f"\n  ✓ 병합 완료: {n_imgs}장 / {n_anns}개 annotations")
+    print(f"  → {out_dir}")
+
+    # ── step 5: 임시 파일 정리 ───────────────────────────────
+    shutil.rmtree(str(tmp_dir), ignore_errors=True)
+    shutil.rmtree(str(trad_out), ignore_errors=True)
+
+
+# ============================================================
+# 조건별 병합 실행 (cond1~cond4)
 # ============================================================
 def run_condition(category, condition, n_original, n_genai, n_traditional,
                   seed, output_base):
@@ -186,6 +287,18 @@ def run_condition(category, condition, n_original, n_genai, n_traditional,
     print(f"  출력: {out_dir}")
     print(f"{'='*60}")
 
+    # ── cond5: 별도 처리 ──────────────────────────────────────
+    if condition == "cond5":
+        run_cond5_traditional(
+            category=category,
+            n_original=n_original,
+            n_genai=n_genai,
+            n_traditional=n_traditional,
+            seed=seed,
+            out_dir=out_dir,
+        )
+        return
+
     sources = []
 
     # ─── 원본 (모든 조건 공통) ───────────────────────────────
@@ -197,8 +310,8 @@ def run_condition(category, condition, n_original, n_genai, n_traditional,
     print(f"  원본: {len(orig_imgs)}장 (요청 {n_original})")
     sources.append((paths["original_images"], orig_imgs, orig_anns))
 
-    # ─── gen_ai (cond3, cond4, cond5) ────────────────────────
-    if condition in ("cond3", "cond4", "cond5"):
+    # ─── gen_ai (cond3, cond4) ────────────────────────────────
+    if condition in ("cond3", "cond4"):
         if not paths["genai_ann"].exists():
             print(f"  [ERROR] gen_ai annotations.json 없음: {paths['genai_ann']}")
             return
@@ -207,11 +320,11 @@ def run_condition(category, condition, n_original, n_genai, n_traditional,
         print(f"  gen_ai: {len(genai_imgs)}장 (요청 {n_genai})")
         sources.append((paths["genai_images"], genai_imgs, genai_anns))
 
-    # ─── traditional_aug (cond2, cond4, cond5) ───────────────
-    if condition in ("cond2", "cond4", "cond5"):
+    # ─── traditional_aug (cond2, cond4): 원본 데이터에서 증강된 것 ───
+    if condition in ("cond2", "cond4"):
         if not paths["trad_ann"].exists():
             print(f"  [ERROR] traditional_aug annotations.json 없음: {paths['trad_ann']}")
-            print(f"  먼저 traditional_augment.py를 실행하세요.")
+            print(f"  먼저 traditional_augment.py 실행 필요")
             return
         trad_data = load_coco(paths["trad_ann"])
         trad_imgs, trad_anns = sample_images(trad_data, paths["trad_images"], n_traditional, seed + 2)
@@ -225,7 +338,7 @@ def run_condition(category, condition, n_original, n_genai, n_traditional,
 
 
 # ============================================================
-# 조건별 기본 파라미터 (참고용)
+# 조건별 기본 파라미터
 # ============================================================
 CONDITION_DEFAULTS = {
     "cond1": dict(n_original=25, n_genai=0,   n_traditional=0),
@@ -246,10 +359,10 @@ def main():
         epilog="""
 조건 정의:
   cond1: 원본 25
-  cond2: 원본 25 + 전통 250
+  cond2: 원본 25 + 전통 250 (원본에서 전통 증강)
   cond3: 원본 25 + gen_ai 250
-  cond4: 원본 25 + gen_ai 250 + 전통 250
-  cond5: 원본 25 + gen_ai 250 + 전통 2750
+  cond4: 원본 25 + gen_ai 250 + 전통 250 (원본에서 전통 증강)
+  cond5: 원본 25 + gen_ai 250 + 전통 2750 ★(원본+gen_ai 합쳐서 전통 증강)
 
 예시:
   python scripts/data_utils/merge_dataset.py --category Screw --condition cond3
@@ -276,15 +389,13 @@ def main():
 
     args = parser.parse_args()
 
-    # 조건별 기본값 적용
     defaults = CONDITION_DEFAULTS[args.condition]
     n_original    = args.n_original    if args.n_original    is not None else defaults["n_original"]
     n_genai       = args.n_genai       if args.n_genai       is not None else defaults["n_genai"]
     n_traditional = args.n_traditional if args.n_traditional is not None else defaults["n_traditional"]
 
     output_base = Path(args.output_dir) if args.output_dir else BASE / "results" / "experiment2"
-
-    categories = list(CATEGORY_CLASSES.keys()) if args.category == 'all' else [args.category]
+    categories  = list(CATEGORY_CLASSES.keys()) if args.category == 'all' else [args.category]
 
     print(f"\n실험 데이터셋 병합 시작")
     print(f"  조건: {args.condition}")
