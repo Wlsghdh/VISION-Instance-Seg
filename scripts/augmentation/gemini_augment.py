@@ -29,7 +29,7 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 # ===== Gemini API 설정 =====
-GEMINI_API_KEY = "AIzaSyBy1c9mJQfBWOgJW3Nn8MTuMxVWtfwCqP8"
+GEMINI_API_KEY = "Your_gemini_api"
 
 BASE_REFERENCE_DIR = "reference_images"
 BASE_OUTPUT_DIR = "vision_ai_generated"
