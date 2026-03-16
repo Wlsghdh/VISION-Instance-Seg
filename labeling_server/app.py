@@ -1,6 +1,6 @@
 """
-VISION Dataset AI-Assisted Annotation Tool v10.0
-- --category all (기본): Cable + Screw + Casting 전체 동시 지원
+VISION Dataset AI-Assisted Annotation Tool v11.0
+- --category all (기본): 14개 도메인 전체 동시 지원
 - 카테고리별 data_augmented/{category}/{split}/ 에 자동 저장
 
 사용법:
@@ -8,9 +8,20 @@ VISION Dataset AI-Assisted Annotation Tool v10.0
     python labeling_server/app.py --port 5198
 
     # 특정 카테고리만
-    python labeling_server/app.py --category Cable   --port 5200
-    python labeling_server/app.py --category Screw   --port 5201
-    python labeling_server/app.py --category Casting --port 5202
+    python labeling_server/app.py --category Cable      --port 5200
+    python labeling_server/app.py --category Screw      --port 5201
+    python labeling_server/app.py --category Casting    --port 5202
+    python labeling_server/app.py --category Console    --port 5203
+    python labeling_server/app.py --category Cylinder   --port 5204
+    python labeling_server/app.py --category Electronics --port 5205
+    python labeling_server/app.py --category Groove     --port 5206
+    python labeling_server/app.py --category Hemisphere --port 5207
+    python labeling_server/app.py --category Lens       --port 5208
+    python labeling_server/app.py --category PCB_1      --port 5209
+    python labeling_server/app.py --category PCB_2      --port 5210
+    python labeling_server/app.py --category Ring       --port 5211
+    python labeling_server/app.py --category Capacitor  --port 5212
+    python labeling_server/app.py --category Wood       --port 5213
 """
 
 import json
@@ -27,14 +38,80 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 app = Flask(__name__)
 
 # ============================================================
-# 카테고리별 설정
+# 카테고리별 설정 (14개 도메인 전체)
 # ============================================================
 CATEGORY_CLASSES = {
-    "Cable":   [{"id": 1, "name": "thunderbolt", "supercategory": "thunderbolt"}],
-    "Screw":   [{"id": 0, "name": "defect",      "supercategory": "defect"}],
+    "Cable": [
+        {"id": 0, "name": "break",       "supercategory": "break"},
+        {"id": 1, "name": "thunderbolt", "supercategory": "thunderbolt"},
+    ],
+    "Capacitor": [
+        {"id": 0, "name": "0", "supercategory": "defect"},
+    ],
     "Casting": [
         {"id": 0, "name": "Inclusoes", "supercategory": "defect"},
         {"id": 1, "name": "Rechupe",   "supercategory": "defect"},
+    ],
+    "Console": [
+        {"id": 0, "name": "Collision", "supercategory": "defect"},
+        {"id": 1, "name": "Dirty",     "supercategory": "defect"},
+        {"id": 2, "name": "Gap",       "supercategory": "defect"},
+        {"id": 3, "name": "Scratch",   "supercategory": "defect"},
+    ],
+    "Cylinder": [
+        {"id": 0, "name": "Chip",       "supercategory": "defect"},
+        {"id": 1, "name": "PistonMiss", "supercategory": "defect"},
+        {"id": 2, "name": "Porosity",   "supercategory": "defect"},
+        {"id": 3, "name": "RCS",        "supercategory": "defect"},
+    ],
+    "Electronics": [
+        {"id": 0, "name": "damage", "supercategory": "defect"},
+    ],
+    "Groove": [
+        {"id": 0, "name": "s_burr",    "supercategory": "defect"},
+        {"id": 1, "name": "s_scratch", "supercategory": "defect"},
+    ],
+    "Hemisphere": [
+        {"id": 0, "name": "Defect-A", "supercategory": "defect"},
+        {"id": 1, "name": "Defect-B", "supercategory": "defect"},
+        {"id": 2, "name": "Defect-C", "supercategory": "defect"},
+        {"id": 3, "name": "Defect-D", "supercategory": "defect"},
+    ],
+    "Lens": [
+        {"id": 0, "name": "Fiber",          "supercategory": "defect"},
+        {"id": 1, "name": "Flash Particle", "supercategory": "defect"},
+        {"id": 2, "name": "Hole",           "supercategory": "defect"},
+        {"id": 3, "name": "Surface Damage", "supercategory": "defect"},
+        {"id": 4, "name": "Tear",           "supercategory": "defect"},
+    ],
+    "PCB_1": [
+        {"id": 0, "name": "missing_hole",    "supercategory": "defect"},
+        {"id": 1, "name": "mouse_bite",      "supercategory": "defect"},
+        {"id": 2, "name": "open_circuit",    "supercategory": "defect"},
+        {"id": 3, "name": "short",           "supercategory": "defect"},
+        {"id": 4, "name": "spur",            "supercategory": "defect"},
+        {"id": 5, "name": "spurious_copper", "supercategory": "defect"},
+    ],
+    "PCB_2": [
+        {"id": 0, "name": "defect1", "supercategory": "defect"},
+        {"id": 1, "name": "defect2", "supercategory": "defect"},
+        {"id": 2, "name": "defect3", "supercategory": "defect"},
+        {"id": 3, "name": "defect4", "supercategory": "defect"},
+        {"id": 4, "name": "defect5", "supercategory": "defect"},
+        {"id": 5, "name": "defect6", "supercategory": "defect"},
+        {"id": 6, "name": "defect7", "supercategory": "defect"},
+    ],
+    "Ring": [
+        {"id": 0, "name": "t_contamination",  "supercategory": "defect"},
+        {"id": 1, "name": "t_scratch",        "supercategory": "defect"},
+        {"id": 2, "name": "unfinished_surface","supercategory": "defect"},
+    ],
+    "Screw": [
+        {"id": 0, "name": "defect", "supercategory": "defect"},
+    ],
+    "Wood": [
+        {"id": 0, "name": "impurities", "supercategory": "defect"},
+        {"id": 1, "name": "pits",       "supercategory": "defect"},
     ],
 }
 
@@ -446,8 +523,10 @@ if __name__ == '__main__':
         """
     )
     parser.add_argument('--category', type=str, default='all',
-                        choices=['all', 'Cable', 'Screw', 'Casting'],
-                        help='대상 카테고리 (기본: all - 전체)')
+                        choices=['all', 'Cable', 'Capacitor', 'Casting', 'Console',
+                                 'Cylinder', 'Electronics', 'Groove', 'Hemisphere',
+                                 'Lens', 'PCB_1', 'PCB_2', 'Ring', 'Screw', 'Wood'],
+                        help='대상 카테고리 (기본: all - 전체 14개 도메인)')
     parser.add_argument('--split', type=str, default='gen_ai',
                         help='데이터 split (gen_ai / traditional_aug, 기본: gen_ai)')
     parser.add_argument('--port', type=int, default=5198, help='서버 포트 (기본: 5198)')

@@ -31,6 +31,7 @@ from datetime import datetime, timedelta
 import sys
 import json
 import argparse
+import random
 
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
@@ -41,6 +42,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 BASE_REFERENCE_DIR = "reference_images"
 BASE_OUTPUT_DIR    = "vision_ai_generated"
 DATA_ROOT          = "/home/jjh0709/gitrepo/VISION-Instance-Seg/data"
+DATA_AUG_ROOT      = "/home/jjh0709/gitrepo/VISION-Instance-Seg/data_augmented"
 
 DELAY_BETWEEN_IMAGES = 10   # 초 (기존 35 → 10)
 MAX_RETRIES          = 3
@@ -49,9 +51,53 @@ RATE_LIMIT_BACKOFF   = 600  # 10분
 # ===== 결함 유형별 설정 =====
 DEFECT_CONFIGS = {
 
-    # ── 기존 (bbox 레퍼런스 방식 유지) ──────────────────────────────
+    # ── Cable (data_ref 방식) ─────────────────────────────────────
+    "cable_thunderbolt": {
+        "total_images": 100,   # 부족분: 100장
+        "ref_dir": "Cable",
+        "out_dir": "Cable",
+        "description": "Cable thunderbolt defect - electrical discharge marks or burn traces on cable surface",
+        "prompt_base": (
+            "Generate a new image of a cable/wire with a thunderbolt (electrical discharge) defect. "
+            "The FIRST image is a NORMAL cable — use it as the base appearance reference. "
+            "The REMAINING images are DEFECTIVE cables with thunderbolt defects "
+            "(defect areas are highlighted with a BLUE BORDER in the reference images — "
+            "the blue marking is only for reference, do NOT include it in the output). "
+        ),
+        "prompt_key_instruction": (
+            "MANDATORY: Output MUST contain exactly one thunderbolt defect — "
+            "a small electrical discharge mark or burn trace on the cable surface. "
+            "CRITICAL SIZE CONSTRAINT: The defect must be THE EXACT SAME SIZE as the blue boxes, or SMALLER. "
+            "Place the defect at a DIFFERENT POSITION than shown in the reference defect images. "
+            "CRITICAL: Do NOT add any symbols, icons, emojis, lightning bolts, or decorative graphics. "
+            "The defect is a PHYSICAL BURN MARK on the cable — NOT a lightning symbol. "
+            "Do NOT modify the background in any way — keep it EXACTLY as in the reference. "
+            "Do NOT generate a defect-free image. "
+            "Do NOT include any blue markings or highlights in the generated image. "
+        ),
+        "prompt_variations": [
+            "Place the thunderbolt mark in the upper-left area of the cable.",
+            "Place the discharge mark slightly left of center on the cable.",
+            "Place the thunderbolt defect in the lower-right area of the cable.",
+            "Place the burn mark near the top-center of the cable.",
+            "Place the thunderbolt mark in the upper-right area of the cable.",
+            "Place the discharge mark near the lower-center of the cable.",
+            "Place the thunderbolt defect on the left side of the cable.",
+            "Place the burn mark in the lower-left area of the cable.",
+            "Place the thunderbolt mark slightly right of center on the cable.",
+            "Place the discharge mark in the middle-right area of the cable.",
+        ],
+        "prompt_style": (
+            "Industrial inspection photography with slightly varied lighting. "
+            "The cable shape, color, texture, AND BACKGROUND must be IDENTICAL to the FIRST reference image. "
+            "Do NOT change or distort the background — keep it exactly the same. "
+            "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
+        ),
+    },
+
+    # ── Casting (bbox 레퍼런스 방식 유지) ─────────────────────────────
     "casting_Inclusoes": {
-        "total_images": 150,
+        "total_images": 72,    # 부족분: 150-78=72장
         "description": "Casting inclusion defect - non-metallic foreign material trapped inside a metal casting",
         "prompt_base": (
             "Generate a new image of a metal casting part with an inclusion defect. "
@@ -68,7 +114,10 @@ DEFECT_CONFIGS = {
             "Do NOT generate a defect-free image — a clean output with no defect is WRONG and unacceptable. "
             "Generate a realistic casting image WITH an inclusion defect, but place the defect "
             "at a DIFFERENT POSITION than shown in the reference defect images. "
-            "CRITICAL — DEFECT SIZE: the defect must be THE EXACT SAME SIZE as the blue boxes, or SMALLER. "
+            "CRITICAL SIZE CONSTRAINT: The defect must be EXTREMELY TINY — occupying less than 0.5% of the total image area. "
+            "Think of it as a single small dark speck, no larger than a grain of rice on the surface. "
+            "CRITICAL: The defect must ONLY appear on the casting surface. "
+            "The BACKGROUND (table, surrounding area) must remain COMPLETELY CLEAN — no spots, marks, or artifacts on the background. "
             "Do NOT include any blue markings or highlights in the generated image. "
         ),
         "prompt_variations": [
@@ -85,14 +134,16 @@ DEFECT_CONFIGS = {
         ],
         "prompt_style": (
             "Industrial inspection photography, even lighting, sharp focus on the casting surface. "
-            "Maintain the exact same casting part shape, material texture, color, and background as the FIRST (normal) reference. "
-            "Only add one TINY, SUBTLE defect at a new position. Do NOT add blue markings. "
+            "The casting part shape, material texture, color, and background MUST be IDENTICAL to the FIRST (normal) reference — "
+            "do NOT add any extra marks, spots, or artifacts to the background or surrounding areas. "
+            "Only ONE tiny defect on the casting surface itself. The background must remain perfectly clean. "
+            "Do NOT add blue markings. "
             "REMINDER: The final image MUST have a defect on the metal casting surface."
         ),
     },
 
     "casting_Rechupe": {
-        "total_images": 150,
+        "total_images": 35,    # 부족분: 150-115=35장
         "description": "Casting rechupe (shrinkage/porosity) defect",
         "prompt_base": (
             "Generate a new image of a metal casting part with a rechupe (shrinkage) defect. "
@@ -105,7 +156,10 @@ DEFECT_CONFIGS = {
             "MANDATORY: Output MUST contain exactly one visible rechupe/shrinkage defect ON THE METAL SURFACE. "
             "The background must remain identical to the normal reference. "
             "Place the defect at a DIFFERENT POSITION than shown in references. "
-            "DEFECT SIZE: same as the blue boxes or SMALLER. Do NOT include blue markings. "
+            "CRITICAL SIZE CONSTRAINT: The defect must be EXTREMELY TINY — occupying less than 0.5% of the total image area. "
+            "A tiny pinhole or micro-cavity, no larger than a small dot. "
+            "If you think the defect is small enough, make it EVEN SMALLER. "
+            "Do NOT include blue markings. "
         ),
         "prompt_variations": [
             "Place the shrinkage defect in the upper-left area of the casting surface.",
@@ -121,13 +175,15 @@ DEFECT_CONFIGS = {
         ],
         "prompt_style": (
             "Industrial inspection photography, consistent lighting, sharp focus on the casting. "
-            "Maintain exact casting shape, texture, color, background as the FIRST (normal) reference. "
-            "Only add one TINY, SUBTLE defect. Do NOT add blue markings."
+            "The casting part shape, texture, color, and background MUST be IDENTICAL to the FIRST (normal) reference — "
+            "do NOT deform, distort, or change the base object in any way. "
+            "Only add ONE tiny defect. Everything else must be exactly the same as the normal reference. "
+            "Do NOT add blue markings."
         ),
     },
 
     "screw_defect": {
-        "total_images": 300,
+        "total_images": 44,    # 부족분: 300-256=44장
         "description": "Screw defect - various manufacturing defects on screws",
         "prompt_base": (
             "Generate a new image of a screw with a manufacturing defect. "
@@ -139,7 +195,9 @@ DEFECT_CONFIGS = {
         "prompt_key_instruction": (
             "ABSOLUTE RULE — NO BLUE MARKINGS in output. "
             "Place the defect at a DIFFERENT POSITION along the screw than in references. "
-            "DEFECT SIZE: same size as blue boxes or SMALLER. No blue color/boxes/borders in output. "
+            "CRITICAL SIZE CONSTRAINT: The defect must occupy about 1-1.5% of the total image area. "
+            "A small but VISIBLE nick, scratch, or blemish — noticeable upon inspection. "
+            "No blue color/boxes/borders in output. "
         ),
         "prompt_variations": [
             "Place the defect on the upper portion of the screw shaft/threads.",
@@ -155,21 +213,22 @@ DEFECT_CONFIGS = {
         ],
         "prompt_style": (
             "Industrial inspection photography, consistent lighting, sharp focus on the screw. "
-            "Keep the same screw type, material, background. Only add one SMALL defect at a new position. "
+            "Keep the same screw type, material, background. "
+            "The defect must be BARELY VISIBLE — a tiny mark that requires close inspection to notice. "
             "No overlaid graphics, no blue rectangles, no colored borders."
         ),
     },
 
     # ── Console (bbox 없는 원본 이미지 방식) ─────────────────────────
     "Console_Collision": {
-        "total_images": 75,
-        "ref_dir": "Console/Console_Collision",   # normal_00.png 위치
+        "total_images": 25,    # 부족분: 75-50=25장
+        "ref_dir": "Console/Console_Collision",
         "out_dir": "Console/Console_Collision",
-        "data_ref": {                             # defect 레퍼런스: bbox 없는 원본
+        "data_ref": {
             "data_dir": f"{DATA_ROOT}/Console/train",
             "annotation": f"{DATA_ROOT}/Console/train/_annotations.coco.json",
             "cat_id": 0,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Console collision defect - extremely subtle micro-crack or impact chip on console surface",
         "prompt_base": (
@@ -181,12 +240,12 @@ DEFECT_CONFIGS = {
         ),
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain exactly one collision defect — "
-            "a very subtle micro-crack, tiny chip, or barely-visible impact mark. "
-            "CRITICAL — EXTREME SUBTLETY: The defect must be nearly invisible at first glance, "
-            "detectable only under close inspection. "
+            "a CLEARLY VISIBLE micro-crack, small chip, or impact mark. "
+            "CRITICAL SIZE CONSTRAINT: The defect must occupy about 1-2% of the total image area. "
+            "Not too big, not too small — a MEDIUM-sized defect that is clearly distinguishable. "
+            "It MUST have enough CONTRAST to be easily spotted against the background. "
             "Place the defect at a DIFFERENT POSITION than in the reference images. "
-            "Keep defect SIZE similar to what is shown in the reference images. "
-            "Do NOT generate a defect-free image. "
+            "Do NOT generate a defect-free image — a clean output is WRONG. "
             "Do NOT add any colored boxes, borders, or annotation marks — the output must look like a real photo. "
         ),
         "prompt_variations": [
@@ -204,20 +263,20 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same console shape, panel layout, color, and composition as the FIRST (normal) image. "
-            "Only add one EXTREMELY SUBTLE collision defect — nearly invisible, same size as in reference defect images. "
+            "The defect must be BARELY VISIBLE — a tiny mark requiring close inspection to notice. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
 
     "Console_Dirty": {
-        "total_images": 75,
+        "total_images": 9,     # 부족분: 75-66=9장
         "ref_dir": "Console/Console_Dirty",
         "out_dir": "Console/Console_Dirty",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Console/train",
             "annotation": f"{DATA_ROOT}/Console/train/_annotations.coco.json",
             "cat_id": 1,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Console dirty defect - smudge, fingerprint, or contamination mark on console surface",
         "prompt_base": (
@@ -230,9 +289,10 @@ DEFECT_CONFIGS = {
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain exactly one dirty/contamination defect — "
             "a visible smudge, fingerprint mark, grease stain, or dust accumulation on the console surface. "
-            "The dirty mark should look like genuine contamination: irregular in shape, with natural smear texture. "
+            "CRITICAL SIZE CONSTRAINT: The defect must occupy less than 2% of the total image area. "
+            "A small, subtle smudge — NOT a large stain covering a big area. "
+            "The defect must be MUCH SMALLER than you initially think — if in doubt, make it smaller. "
             "Place the dirty mark at a DIFFERENT POSITION than in the reference images. "
-            "Keep defect SIZE similar to the references. "
             "Do NOT generate a defect-free image. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
         ),
@@ -251,37 +311,39 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same console shape, layout, color as the FIRST (normal) image. "
-            "Only add one realistic dirty/contamination mark — look of a genuine fingerprint, grease smear, or dust smudge. "
+            "The dirty mark must be SMALL and SUBTLE — a tiny smudge, not a large stain. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
 
     "Console_Gap": {
-        "total_images": 75,
+        "total_images": 4,     # 부족분: 75-71=4장
         "ref_dir": "Console/Console_Gap",
         "out_dir": "Console/Console_Gap",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Console/train",
             "annotation": f"{DATA_ROOT}/Console/train/_annotations.coco.json",
             "cat_id": 2,
-            "n_samples": 9,
+            "n_samples": 3,
         },
-        "description": "Console gap defect - visible gap/separation between console components",
+        "description": "Console gap defect - elongated lifted/raised edge or separation between console components",
         "prompt_base": (
             "Generate a new image of an electronic console/control panel part with a gap defect. "
             "The FIRST image is a NORMAL console — use it as the base appearance reference. "
             "The REMAINING images are DEFECTIVE consoles showing real gap defects: "
-            "visible separations or openings between two console components or panel sections "
-            "that should be tightly fitted together. "
+            "a panel edge or seam that has LIFTED or RAISED slightly, creating an elongated narrow gap "
+            "along the edge where two parts meet. It is NOT broken or smashed — the edge is simply lifted up. "
             "Study these examples to understand the look of the gap defect. "
         ),
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain exactly one gap defect — "
-            "a visible separation or opening between two console parts/sections that should be touching. "
-            "The gap should look physically real: a dark opening or misalignment between panel edges. "
+            "an elongated, narrow separation where a panel edge has LIFTED slightly from the surface. "
+            "The gap runs ALONG an edge or seam — it is long and thin, like a raised seam. "
+            "CRITICAL SIZE CONSTRAINT: The gap must be THIN (narrow width) — less than 1% of total image area. "
+            "It should look like the edge is slightly lifted/raised, NOT smashed or broken. "
+            "The defect must be MUCH SMALLER than you initially think — if in doubt, make it thinner. "
             "Place the gap at a DIFFERENT LOCATION than in the reference images "
             "(still at a joint, seam, or edge between components). "
-            "Keep gap SIZE similar to the references. "
             "Do NOT generate a defect-free image. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
         ),
@@ -300,21 +362,21 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same console shape, layout, color as the FIRST (normal) image. "
-            "Only introduce one realistic gap/separation between existing component edges. "
-            "The gap should cast a natural shadow and look physically real. "
+            "The gap must be a THIN raised edge — elongated and narrow, like a lifted seam. "
+            "NOT broken or smashed — just slightly lifted. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
 
     "Console_Scratch": {
-        "total_images": 75,
+        "total_images": 6,     # 부족분: 75-69=6장
         "ref_dir": "Console/Console_Scratch",
         "out_dir": "Console/Console_Scratch",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Console/train",
             "annotation": f"{DATA_ROOT}/Console/train/_annotations.coco.json",
             "cat_id": 3,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Console scratch defect - linear scratch mark on the console surface",
         "prompt_base": (
@@ -327,11 +389,11 @@ DEFECT_CONFIGS = {
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain exactly one scratch defect — "
             "a realistic linear scratch mark on the console panel surface. "
-            "The scratch should look genuine: a thin, elongated groove with slightly lighter coloring. "
-            "The scratch can be straight or slightly curved, at any angle. "
+            "CRITICAL SIZE CONSTRAINT: The scratch must be THIN and SHORT — occupying less than 1% of total image area. "
+            "A fine hairline scratch, not a deep wide gouge. Keep it narrow but CLEARLY VISIBLE. "
+            "The scratch must have enough CONTRAST against the surface to be distinguishable — do NOT let it blend in. "
             "Place the scratch at a DIFFERENT POSITION/ANGLE than in the reference images. "
-            "Keep scratch SIZE and LENGTH similar to the references. "
-            "Do NOT generate a defect-free image. "
+            "Do NOT generate a defect-free image — a clean output is WRONG. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
         ),
         "prompt_variations": [
@@ -349,21 +411,21 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same console shape, layout, color as the FIRST (normal) image. "
-            "Only add one realistic linear scratch — natural depth cues, slight shadow along one edge. "
+            "The scratch must be a FINE, THIN line — barely visible, like a hairline mark. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
 
     # ── Cylinder (bbox 없는 원본 이미지 방식) ─────────────────────────
     "Cylinder_Chip": {
-        "total_images": 75,
+        "total_images": 23,    # 부족분: 75-52=23장
         "ref_dir": "Cylinder/Cylinder_Chip",
         "out_dir": "Cylinder/Cylinder_Chip",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Cylinder/train",
             "annotation": f"{DATA_ROOT}/Cylinder/train/_annotations.coco.json",
             "cat_id": 0,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Cylinder chip defect - chip or scratch at the BOTTOM edge/rim of the cylinder",
         "prompt_base": (
@@ -376,10 +438,11 @@ DEFECT_CONFIGS = {
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain exactly one chip defect — "
             "a small chip, nick, or scratch mark at the BOTTOM EDGE of the cylinder. "
+            "CRITICAL SIZE CONSTRAINT: The chip must occupy less than 3% of the total image area. "
+            "A TINY chip — a small nick or broken edge piece, not a large chunk missing. "
+            "The defect must be MUCH SMALLER than you initially think — if in doubt, make it smaller. "
             "CRITICAL PLACEMENT: The chip MUST be at or very near the bottom rim/edge — not in the middle or top. "
-            "The chip should look like material has broken away or been scratched from the lower rim. "
             "Vary its exact position along the bottom rim relative to the references. "
-            "Keep defect SIZE similar to the references. "
             "Do NOT generate a defect-free image. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
         ),
@@ -398,20 +461,21 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same cylinder shape, material finish, color as the FIRST (normal) image. "
-            "Only add a chip at the bottom edge — looks like a small broken or scratched area on the lower rim. "
+            "The chip must be SMALL but CLEARLY VISIBLE — a noticeable nick at the bottom edge. "
+            "A defect-free output is WRONG — there MUST be a chip. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
 
     "Cylinder_PistonMiss": {
-        "total_images": 75,
+        "total_images": 32,    # 부족분: 75-43=32장
         "ref_dir": "Cylinder/Cylinder_PistonMiss",
         "out_dir": "Cylinder/Cylinder_PistonMiss",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Cylinder/train",
             "annotation": f"{DATA_ROOT}/Cylinder/train/_annotations.coco.json",
             "cat_id": 1,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Cylinder piston-miss defect - missing step/groove between stages; appears as single layer",
         "prompt_base": (
@@ -425,8 +489,11 @@ DEFECT_CONFIGS = {
         ),
         "prompt_key_instruction": (
             "MANDATORY: Output MUST show a piston-miss defect — "
-            "the boundary/groove/step separating cylinder stages is missing or blurred at one location. "
-            "Where there should be a clear step between sections, it appears merged or absent. "
+            "the boundary/groove/step separating cylinder stages is missing or blurred at one SMALL location. "
+            "CRITICAL SIZE CONSTRAINT: The affected area must occupy less than 3% of the total image area. "
+            "Only a SMALL SECTION of the step should be missing — not the entire groove. "
+            "CRITICAL: The cylinder must remain STRAIGHT — do NOT bend, curve, or warp the cylinder shape. "
+            "The overall cylinder shape must be identical to the normal reference — only the groove/step is affected. "
             "Vary which section boundary is affected relative to the references. "
             "Do NOT generate a defect-free cylinder. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
@@ -452,14 +519,14 @@ DEFECT_CONFIGS = {
     },
 
     "Cylinder_Porosity": {
-        "total_images": 75,
+        "total_images": 0,     # 이미 초과 (99/75)
         "ref_dir": "Cylinder/Cylinder_Porosity",
         "out_dir": "Cylinder/Cylinder_Porosity",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Cylinder/train",
             "annotation": f"{DATA_ROOT}/Cylinder/train/_annotations.coco.json",
             "cat_id": 2,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Cylinder porosity defect - small pitting or surface peeling/flaking marks",
         "prompt_base": (
@@ -471,10 +538,12 @@ DEFECT_CONFIGS = {
         ),
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain a porosity defect — "
-            "small pits, craters, or peeled/flaked areas on the cylinder surface. "
-            "The defect should look like small craters or patches where surface material has pitted or peeled. "
+            "small DARK/BLACK pitted marks or gouged spots on the cylinder surface where material has been removed. "
+            "These are NOT water droplets or bubbles — they are DRY, DARK, RECESSED marks like small craters. "
+            "CRITICAL SIZE CONSTRAINT: The defect must occupy less than 2% of the total image area. "
+            "Generate AT MOST 3 tiny dark pits — each pit is a small black/dark recessed mark. "
+            "Make the pits SLIGHTLY SMALLER than those shown in the reference images. "
             "Place the defect at a DIFFERENT POSITION than in the references. "
-            "Keep defect SIZE similar to the references. "
             "Do NOT generate a defect-free image. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
         ),
@@ -493,20 +562,20 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same cylinder shape, material, color as the FIRST (normal) image. "
-            "Only add porosity/pitting defect — small craters or peeled areas with natural texture. "
+            "The porosity must be TINY dark/black recessed marks — NOT water droplets or bubbles. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
 
     "Cylinder_RCS": {
-        "total_images": 75,
+        "total_images": 75,    # 부족분: 75-0=75장
         "ref_dir": "Cylinder/Cylinder_RCS",
         "out_dir": "Cylinder/Cylinder_RCS",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Cylinder/train",
             "annotation": f"{DATA_ROOT}/Cylinder/train/_annotations.coco.json",
             "cat_id": 3,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Cylinder RCS defect - multiple parallel scratch marks running simultaneously",
         "prompt_base": (
@@ -519,10 +588,12 @@ DEFECT_CONFIGS = {
         ),
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain an RCS defect — "
-            "multiple parallel scratches (2–4 lines) running in the same direction simultaneously. "
-            "The scratches should be closely spaced parallel grooves, as if made by multiple contact points at once. "
+            "2–3 faint parallel scratches running in the same direction. "
+            "CRITICAL SIZE CONSTRAINT: The scratch group must occupy less than 1% of the total image area. "
+            "The scratches must be ALMOST INVISIBLE — extremely faint hairline marks, very short (less than 10% of image width). "
+            "They should look like the lightest possible surface scuffs that you can barely see. "
+            "Make them a QUARTER as visible as you initially think — they must require very close inspection to notice. "
             "Place them at a DIFFERENT POSITION/ANGLE than in the references. "
-            "Keep the scratch group SIZE similar to the references. "
             "Do NOT generate a defect-free image. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
         ),
@@ -541,21 +612,21 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same cylinder shape, material, color as the FIRST (normal) image. "
-            "Only add the multiple parallel scratches — thin parallel grooves with natural depth and shadow. "
+            "The scratches must be EXTREMELY FAINT — barely visible surface scuffs, not prominent marks. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
 
     # ── Wood (bbox 없는 원본 이미지 방식) ────────────────────────────
     "Wood_impurities": {
-        "total_images": 150,
+        "total_images": 100,
         "ref_dir": "Wood/Wood_impurities",
         "out_dir": "Wood/Wood_impurities",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Wood/train",
             "annotation": f"{DATA_ROOT}/Wood/train/_annotations.coco.json",
             "cat_id": 0,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Wood impurities defect - white/bright marks on wood surface, like scorched or burned spots",
         "prompt_base": (
@@ -569,11 +640,11 @@ DEFECT_CONFIGS = {
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain an impurities defect — "
             "a white or bright-colored mark on the wood surface that contrasts with the natural wood. "
-            "The mark looks like: a scorched/burned white spot, mineral deposit, bleached area, "
-            "or white powder/ash-like contamination on the wood. "
-            "KEY CHARACTERISTIC: WHITE or LIGHT-COLORED appearance against the wood background. "
+            "CRITICAL SIZE CONSTRAINT: The defect must occupy less than 0.5% of the total image area. "
+            "A TINY white mark — smaller than a fingernail. NOT a large patch or stain. "
+            "The mark should have natural irregular edges but must be VERY SMALL. "
+            "If you think it's small enough, make it HALF that size. "
             "Place the mark at a DIFFERENT POSITION than in the references. "
-            "Keep SIZE similar to the references. "
             "Do NOT generate a defect-free image. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
         ),
@@ -592,21 +663,20 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same wood grain pattern, color, texture as the FIRST (normal) image. "
-            "Only add the white/bright impurity mark — naturally embedded in the wood surface "
-            "like a genuine scorched spot or mineral deposit. "
+            "The impurity must be TINY — a small white mark, much smaller than you think. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
 
     "Wood_pits": {
-        "total_images": 150,
+        "total_images": 100,
         "ref_dir": "Wood/Wood_pits",
         "out_dir": "Wood/Wood_pits",
         "data_ref": {
             "data_dir": f"{DATA_ROOT}/Wood/train",
             "annotation": f"{DATA_ROOT}/Wood/train/_annotations.coco.json",
             "cat_id": 1,
-            "n_samples": 9,
+            "n_samples": 3,
         },
         "description": "Wood pits defect - scratch marks or pit indentations on wood surface",
         "prompt_base": (
@@ -620,10 +690,10 @@ DEFECT_CONFIGS = {
         "prompt_key_instruction": (
             "MANDATORY: Output MUST contain a pits/scratch defect — "
             "visible scratch marks or pit indentations on the wood surface. "
-            "The scratch should look genuine: a linear groove cutting across the grain "
-            "with raw wood exposed at the scratch path. Can be single prominent scratch or cluster of pits. "
+            "CRITICAL SIZE CONSTRAINT: The defect must occupy about 0.5-1% of the total image area. "
+            "A SMALL but VISIBLE scratch or a few small pits with enough CONTRAST to be seen. "
+            "The defect must NOT be invisible — it should be noticeable upon inspection. "
             "Place the defect at a DIFFERENT POSITION than in the references. "
-            "Keep SIZE and LENGTH similar to the references. "
             "Do NOT generate a defect-free image. "
             "Do NOT add any colored boxes, borders, or annotation marks. "
         ),
@@ -642,7 +712,7 @@ DEFECT_CONFIGS = {
         "prompt_style": (
             "Industrial inspection photography with slightly varied lighting. "
             "Maintain exact same wood grain pattern, color, texture as the FIRST (normal) image. "
-            "Only add the scratch/pit marks — a groove with natural shadow and exposed raw wood. "
+            "The scratch/pits must be TINY — a small mark, much smaller than you think. "
             "Output must be a clean, realistic photo with no overlaid graphics or annotation marks."
         ),
     },
@@ -650,6 +720,9 @@ DEFECT_CONFIGS = {
 
 # ===== 클래스 그룹 =====
 CLASS_GROUPS = {
+    "Cable":    ["cable_thunderbolt"],
+    "Casting":  ["casting_Inclusoes", "casting_Rechupe"],
+    "Screw":    ["screw_defect"],
     "Console":  ["Console_Collision", "Console_Dirty", "Console_Gap", "Console_Scratch"],
     "Cylinder": ["Cylinder_Chip", "Cylinder_PistonMiss", "Cylinder_Porosity", "Cylinder_RCS"],
     "Wood":     ["Wood_impurities", "Wood_pits"],
@@ -755,7 +828,8 @@ def _load_from_data(defect_type, config):
         if ann["category_id"] == cat_id:
             cat_img_ids.add(ann["image_id"])
 
-    selected_ids = sorted(cat_img_ids)[:n_samp]
+    all_cat_ids = sorted(cat_img_ids)
+    selected_ids = random.sample(all_cat_ids, min(n_samp, len(all_cat_ids)))
 
     for idx, img_id in enumerate(selected_ids, start=1):
         fname = id2name[img_id]
@@ -779,6 +853,37 @@ def generate_prompt(config, index):
 
 
 # ===== 단일 결함 유형 생성 =====
+# ===== defect_type → data_augmented 출력 매핑 =====
+AUGMENTED_OUTPUT = {
+    "cable_thunderbolt":   {"subdir": "Cable",                        "prefix": "cable_thunderbolt"},
+    "casting_Inclusoes":   {"subdir": "Casting/casting_Inclusoes",    "prefix": "casting_Inclusoes"},
+    "casting_Rechupe":     {"subdir": "Casting/casting_Rechupe",      "prefix": "casting_Rechupe"},
+    "screw_defect":        {"subdir": "Screw",                        "prefix": "screw_defect"},
+    "Console_Collision":   {"subdir": "Console/Console_Collision",    "prefix": "Console_Collision"},
+    "Console_Dirty":       {"subdir": "Console/Console_Dirty",        "prefix": "Console_Dirty"},
+    "Console_Gap":         {"subdir": "Console/Console_Gap",          "prefix": "Console_Gap"},
+    "Console_Scratch":     {"subdir": "Console/Console_Scratch",      "prefix": "Console_Scratch"},
+    "Cylinder_Chip":       {"subdir": "Cylinder/Cylinder_Chip",       "prefix": "Cylinder_Chip"},
+    "Cylinder_PistonMiss": {"subdir": "Cylinder/Cylinder_PistonMiss", "prefix": "Cylinder_PistonMiss"},
+    "Cylinder_Porosity":   {"subdir": "Cylinder/Cylinder_Porosity",   "prefix": "Cylinder_Porosity"},
+    "Cylinder_RCS":        {"subdir": "Cylinder/Cylinder_RCS",        "prefix": "Cylinder_RCS"},
+    "Wood_impurities":     {"subdir": "Wood/Wood_impurities",         "prefix": "Wood_impurities"},
+    "Wood_pits":           {"subdir": "Wood/Wood_pits",               "prefix": "Wood_pits"},
+}
+
+
+def _detect_start_index(output_dir):
+    """기존 파일에서 가장 큰 번호를 찾아 다음 번호 반환"""
+    import re
+    max_idx = -1
+    if output_dir.exists():
+        for f in output_dir.iterdir():
+            m = re.search(r'_(\d+)\.(png|jpg|jpeg)$', f.name, re.IGNORECASE)
+            if m:
+                max_idx = max(max_idx, int(m.group(1)))
+    return max_idx + 1
+
+
 def run_generation(defect_type, count_override=None):
     if defect_type not in DEFECT_CONFIGS:
         print(f"ERROR: Unknown defect type '{defect_type}'", flush=True)
@@ -787,11 +892,16 @@ def run_generation(defect_type, count_override=None):
     config = DEFECT_CONFIGS[defect_type]
     total_images = count_override if count_override else config["total_images"]
 
-    if "out_dir" in config:
-        output_dir = Path(BASE_OUTPUT_DIR) / config["out_dir"]
-    else:
-        output_dir = Path(BASE_OUTPUT_DIR) / defect_type
+    # 출력 경로: vision_ai_generated/{subdir}/
+    aug_info = AUGMENTED_OUTPUT[defect_type]
+    output_dir = Path(BASE_OUTPUT_DIR) / aug_info["subdir"]
     output_dir.mkdir(parents=True, exist_ok=True)
+    file_prefix = aug_info["prefix"]
+
+    # 기존 파일 번호 이어서 생성
+    file_offset = _detect_start_index(output_dir)
+    if file_offset > 0:
+        print(f"  Existing files detected, starting from index {file_offset}", flush=True)
 
     progress = load_progress(defect_type)
     if progress['start_time'] is None:
@@ -866,7 +976,7 @@ def run_generation(defect_type, count_override=None):
                 # 결함 이미지 - 최대 4장 순환 선택
                 defect_refs    = ref_data_list[1:]
                 n_defect       = len(defect_refs)
-                MAX_DEFECT_REFS = min(4, n_defect)
+                MAX_DEFECT_REFS = min(2, n_defect)
                 start_ref      = i % n_defect
                 selected_indices = [(start_ref + k) % n_defect for k in range(MAX_DEFECT_REFS)]
 
@@ -890,7 +1000,7 @@ def run_generation(defect_type, count_override=None):
                 if response.candidates:
                     for part in response.candidates[0].content.parts:
                         if part.inline_data:
-                            save_path = output_dir / f"{defect_type}_{i:03d}.png"
+                            save_path = output_dir / f"{file_prefix}_{i + file_offset:06d}.png"
                             with open(save_path, 'wb') as f:
                                 f.write(part.inline_data.data)
                             progress['completed'].append(i)
@@ -966,7 +1076,7 @@ if __name__ == "__main__":
 
     elif args.defect_type == "all":
         run_order = (
-            ["casting_Inclusoes", "casting_Rechupe", "screw_defect"] +
+            CLASS_GROUPS["Cable"] + CLASS_GROUPS["Casting"] + CLASS_GROUPS["Screw"] +
             CLASS_GROUPS["Console"] + CLASS_GROUPS["Cylinder"] + CLASS_GROUPS["Wood"]
         )
         for dtype in run_order:

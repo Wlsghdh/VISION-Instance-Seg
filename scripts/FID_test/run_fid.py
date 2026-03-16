@@ -31,7 +31,14 @@ from cleanfid import fid
 
 # ===== 설정 =====
 BASE_DIR = Path(__file__).parent
-CLASSES = ["cable", "casting", "console", "cylinder", "wood"]
+CLASSES = [
+    "cable", "casting", "console", "cylinder", "wood",
+    "casting_Inclusoes", "casting_Rechupe",
+    "Console_Collision", "Console_Dirty", "Console_Gap", "Console_Scratch",
+    "Cylinder_Chip", "Cylinder_PistonMiss", "Cylinder_Porosity", "Cylinder_RCS",
+    "screw_defect",
+    "Wood_impurities", "Wood_pits",
+]
 MIN_IMAGES = 5  # FID 계산에 필요한 최소 이미지 수
 
 
@@ -139,6 +146,39 @@ def run_fid_for_class(class_name: str, results: list):
             })
     else:
         print(f"  [SKIP] original_vs_ai_generated (이미지 부족)")
+
+    # 3) ai_generated vs normal_00
+    if ai_ok and normal_ok:
+        print(f"\n  Computing FID: ai_generated vs normal_00 ...", flush=True)
+        try:
+            score = compute_fid(ai_dir, normal_dir)
+            print(f"  → FID(ai_generated, normal_00) = {score:.4f}")
+            results.append({
+                "timestamp": timestamp,
+                "class": class_name,
+                "comparison": "ai_vs_normal_00",
+                "dir_A": str(ai_dir.relative_to(BASE_DIR)),
+                "dir_B": str(normal_dir.relative_to(BASE_DIR)),
+                "n_A": count_images(ai_dir),
+                "n_B": count_images(normal_dir),
+                "fid_score": score,
+                "hypothesis_check": "—",
+            })
+        except Exception as e:
+            print(f"  [ERROR] {e}")
+            results.append({
+                "timestamp": timestamp,
+                "class": class_name,
+                "comparison": "ai_vs_normal_00",
+                "dir_A": str(ai_dir.relative_to(BASE_DIR)),
+                "dir_B": str(normal_dir.relative_to(BASE_DIR)),
+                "n_A": count_images(ai_dir) if ai_dir.exists() else 0,
+                "n_B": count_images(normal_dir) if normal_dir.exists() else 0,
+                "fid_score": "ERROR",
+                "hypothesis_check": "—",
+            })
+    else:
+        print(f"  [SKIP] ai_vs_normal_00 (이미지 부족)")
 
 
 def annotate_hypothesis(results: list):

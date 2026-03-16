@@ -8,29 +8,39 @@
 - **목적**: Gemini API로 불량 이미지 증강 → instance segmentation 성능 비교 연구
 - **GitHub**: https://github.com/Wlsghdh/VISION-Instance-Seg
 - **작업 서버**: lifeai (`/home/jjh0709/gitrepo/VISION-Instance-Seg`)
-- **대상 부품**: Cable, Screw, Casting
+- **대상 부품**: 14개 카테고리 (Cable, Screw, Casting, Console, Cylinder, Capacitor, Electronics, Groove, Hemisphere, Lens, PCB_1, PCB_2, Ring, Wood)
+- **즉시 실험 가능**: Cable, Screw, Casting (train 이미지 + 증강 데이터 완비)
+- **확장 후보**: Console (GenAI 187장 있음), Cylinder (GenAI 26장 있음)
 - **평가지표**: mAP, mAR
 
 ---
 
 ## 데이터 구조
 
-원본 (VISION 데이터셋, val→test 이름 변경):
+원본:
 ```
-data/{Category}/train/{images/, annotations.json}
-data/{Category}/test/{images/, annotations.json}
+data/{Category}/train/{images/, _annotations.coco.json}
+data/{Category}/val/{이미지 직접 저장, _annotations.coco.json}   ← val = test용
 ```
 
-증강 (원본과 분리):
+증강:
 ```
 data_augmented/{Category}/gen_ai/{images/, annotations.json}
 data_augmented/{Category}/traditional_aug/{images/, annotations.json}
 ```
 
-- 라벨링 툴에서 gen_ai 이미지 라벨링 시 → `data_augmented/{Category}/gen_ai/`에 저장
-- 전통 증강 실행 시 → `data_augmented/{Category}/traditional_aug/`에 저장
-- 실험 시 `merge_dataset.py`로 필요한 조합만 병합
-- **test 데이터는 절대 변경 안 함**
+주요 데이터 현황 (즉시 실험 가능 3종):
+
+| 카테고리 | Train | Val | GenAI | Trad Aug | 결함 클래스 |
+|----------|:-----:|:---:|:-----:|:--------:|-----------|
+| Cable | 26장 | 131장 | 104장 | 2,750장 | thunderbolt |
+| Screw | 57장 | 63장 | 256장 | 250장 | defect |
+| Casting | 54장 | 51장 | 193장 | 250장 | Inclusoes, Rechupe |
+
+- val/ 디렉토리는 images/ 하위 폴더 없이 이미지 직접 저장
+- Cable val: break(id=0) + thunderbolt(id=1) 혼재 → **thunderbolt만 평가에 사용**
+- 실험 시 `training/data_pipeline.py`로 필요한 조합 병합 (기존 `merge_dataset.py` 대체)
+- **val 데이터는 절대 변경 안 함**
 
 ---
 
@@ -90,10 +100,19 @@ VISION-Instance-Seg/
 │   ├── templates/
 │   └── static/
 │
-├── training/
-│   ├── train.py
-│   ├── test.py
-│   └── run_experiments.sh
+├── training/                        # 통합 학습 환경 (2026-03-08 구축)
+│   ├── config.py                    # 중앙 설정 (카테고리, 모델 7종, 실험 3종)
+│   ├── data_pipeline.py             # 데이터 병합 + 프레임워크별 등록
+│   ├── train.py                     # 통합 CLI (--category/--model/--experiment)
+│   ├── evaluate.py                  # 독립 평가
+│   ├── adapters/                    # 모델 어댑터 패턴
+│   │   ├── base.py                  # ModelAdapter ABC
+│   │   ├── detectron2_adapter.py    # Mask R-CNN, Cascade Mask R-CNN, MaskDINO, Mask2Former
+│   │   └── mmdet_adapter.py         # Cascade R-CNN, SOLOv2, RTMDet-Ins
+│   ├── utils/
+│   │   ├── maskdino_mapper.py       # Polygon→BitMask 변환
+│   │   └── report.py               # 결과 CSV/비교 테이블
+│   └── maskdino/                    # 기존 MaskDINO 학습 코드 (reference)
 │
 └── results/                         # ⛔ .gitignore
     ├── experiment1/
@@ -149,11 +168,43 @@ VISION-Instance-Seg/
 
 ---
 
+## 설치된 프레임워크
+
+| 패키지 | 버전 | 용도 |
+|--------|------|------|
+| detectron2 | 0.6 | Mask R-CNN, Cascade Mask R-CNN, MaskDINO, Mask2Former |
+| mmcv | 2.1.0 | mmdet 의존성 |
+| mmdet | 3.3.0 | Cascade R-CNN, SOLOv2, RTMDet-Ins |
+| mmengine | 0.10.7 | mmdet Runner |
+| MaskDINO repo | `/home/jjh0709/gitrepo/MaskDINO/` | + deformable attention CUDA ops |
+| Mask2Former repo | `/home/jjh0709/gitrepo/Mask2Former/` | + deformable attention CUDA ops |
+
+## 통합 학습 CLI 사용법
+
+```bash
+cd /home/jjh0709/gitrepo/VISION-Instance-Seg
+
+# 학습
+python -m training.train --category Cable --experiment exp2 --condition cond1 --model mask_rcnn
+python -m training.train --category Screw --experiment exp2 --condition all --model maskdino
+
+# 평가만
+python -m training.train --category Cable --experiment exp2 --condition cond1 --model mask_rcnn --eval-only
+
+# 데이터 준비만
+python -m training.data_pipeline --category Cable --experiment exp2 --condition cond1
+
+# 결과 리포트
+python -m training.utils.report --experiment exp2 --csv
+```
+
 ## 주의사항
 
 - `data/`, `data_augmented/`는 Git 추적 안 함 (서버에 직접 배치)
 - 어노테이션 형식: **COCO format** (instance segmentation)
-- Python 3.9+, mmdetection 기반
+- Python 3.11, conda env `jjh`, CUDA 12.2, A100 80GB x2
+- Cable val의 break(id=0) → 평가에서 제외, thunderbolt(id=1)만 사용
+- Mask2Former import 시 `mask2former.config`만 선택적 임포트 (데이터셋 중복 등록 방지)
 - **작업 완료 시마다 이 파일의 [현재 진행 상황]을 업데이트할 것**
 
 ---
@@ -162,14 +213,20 @@ VISION-Instance-Seg/
 
 - [x] ahnbi1 기존 코드 분석 완료
 - [x] CLAUDE.md 및 docs/legacy/*.md 생성
-- [ ] 레포 구조 세팅 (폴더, README, RULE.md, .gitignore)
-- [x] 라벨링 툴 리팩토링 (labeling_server/app.py v9: argparse, gen_ai 브라우징, /save/existing)
-- [x] Cable train 데이터 정리 (break 제거 → thunderbolt 26장, images/ 구조 생성)
-- [x] gen_ai 데이터 설정 (cable_transfer → data_augmented/Cable/gen_ai/, 105장)
-- [x] 전통 증강 스크립트 작성 (traditional_augment.py: albumentations 2.x, 마스크 기반)
-- [x] Cable traditional_aug 생성 완료 (2750장, seed=42)
-- [ ] Screw/Casting 동일 작업 (데이터 준비 후 진행)
-- [ ] merge_dataset.py 작성
+- [x] 라벨링 툴 리팩토링 (labeling_server/app.py v9)
+- [x] Cable train 데이터 정리 (thunderbolt 26장)
+- [x] gen_ai 데이터 설정 (Cable 104장, Screw 256장, Casting 193장, Console 187장, Cylinder 26장)
+- [x] 전통 증강 (Cable 2750장, Screw 250장, Casting 250장)
+- [x] merge_dataset.py 작성
+- [x] **통합 학습 환경 구축** (2026-03-08)
+  - detectron2, mmcv, mmdet 설치
+  - MaskDINO, Mask2Former repo 클론 + CUDA ops 빌드
+  - 7종 모델 어댑터, 통합 CLI, 데이터 파이프라인, 평가/리포트 스크립트
+  - 데이터 파이프라인 검증 완료 (Cable exp2 cond1 → 25장 병합 OK)
+- [ ] Cable GenAI 추가 생성 (+146장 → 250장 필요)
+- [ ] Casting GenAI 추가 생성 (+57장 → 250장 필요)
+- [ ] Screw/Casting 전통 증강 추가 (250→2,750장)
+- [ ] 실제 학습 테스트 실행 (E2E 검증)
+- [ ] exp1/exp2/exp3 본 학습
 - [ ] gemini_augment.py 리팩토링
-- [ ] 실험/평가 스크립트 작성
-- [ ] Gemini 프롬프트 고도화
+- [ ] 나머지 카테고리 데이터 정리 (Console, Cylinder 등)

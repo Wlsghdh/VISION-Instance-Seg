@@ -104,7 +104,7 @@ button:disabled{opacity:0.4;cursor:not-allowed}
 <body>
 <div class="container">
 <div class="sidebar">
-<h2>🤖 VISION AI Annotation v9.0</h2>
+<h2>🤖 VISION AI Annotation v11.0</h2>
 <div id="serverConfigBanner" style="background:#0d1117;border:1px solid #1f6feb;border-radius:6px;padding:8px;margin-bottom:10px;font-size:10px;color:#58a6ff"></div>
 <div class="section">
 <div class="section-title">0. 서버 이미지 선택</div>
@@ -375,7 +375,7 @@ window.onload = () => {
     // 서버 설정 배너 표시
     const banner = document.getElementById('serverConfigBanner');
     if (banner && serverConfig) {
-        const catLabel = serverConfig.category === 'all' ? '전체 (Cable + Screw + Casting)' : serverConfig.category;
+        const catLabel = serverConfig.category === 'all' ? '전체 (14개 도메인)' : serverConfig.category;
         banner.textContent = `카테고리: ${catLabel}  |  Split: ${serverConfig.split}`;
     }
 };
