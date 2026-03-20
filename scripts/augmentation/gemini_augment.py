@@ -53,7 +53,7 @@ DEFECT_CONFIGS = {
 
     # ── Cable (data_ref 방식) ─────────────────────────────────────
     "cable_thunderbolt": {
-        "total_images": 100,   # 부족분: 100장
+        "total_images": 0,     # 생성 완료
         "ref_dir": "Cable",
         "out_dir": "Cable",
         "description": "Cable thunderbolt defect - electrical discharge marks or burn traces on cable surface",
@@ -97,7 +97,7 @@ DEFECT_CONFIGS = {
 
     # ── Casting (bbox 레퍼런스 방식 유지) ─────────────────────────────
     "casting_Inclusoes": {
-        "total_images": 72,    # 부족분: 150-78=72장
+        "total_images": 47,    # 라벨링 78/125, 부족 47장
         "description": "Casting inclusion defect - non-metallic foreign material trapped inside a metal casting",
         "prompt_base": (
             "Generate a new image of a metal casting part with an inclusion defect. "
@@ -143,7 +143,7 @@ DEFECT_CONFIGS = {
     },
 
     "casting_Rechupe": {
-        "total_images": 35,    # 부족분: 150-115=35장
+        "total_images": 10,    # 라벨링 115/125, 부족 10장
         "description": "Casting rechupe (shrinkage/porosity) defect",
         "prompt_base": (
             "Generate a new image of a metal casting part with a rechupe (shrinkage) defect. "
@@ -183,7 +183,7 @@ DEFECT_CONFIGS = {
     },
 
     "screw_defect": {
-        "total_images": 44,    # 부족분: 300-256=44장
+        "total_images": 0,     # 라벨링 256/125, 이미 초과
         "description": "Screw defect - various manufacturing defects on screws",
         "prompt_base": (
             "Generate a new image of a screw with a manufacturing defect. "
@@ -221,7 +221,7 @@ DEFECT_CONFIGS = {
 
     # ── Console (bbox 없는 원본 이미지 방식) ─────────────────────────
     "Console_Collision": {
-        "total_images": 25,    # 부족분: 75-50=25장
+        "total_images": 75,    # 라벨링 50/125, 부족 75장
         "ref_dir": "Console/Console_Collision",
         "out_dir": "Console/Console_Collision",
         "data_ref": {
@@ -269,7 +269,7 @@ DEFECT_CONFIGS = {
     },
 
     "Console_Dirty": {
-        "total_images": 9,     # 부족분: 75-66=9장
+        "total_images": 59,    # 라벨링 66/125, 부족 59장
         "ref_dir": "Console/Console_Dirty",
         "out_dir": "Console/Console_Dirty",
         "data_ref": {
@@ -317,7 +317,7 @@ DEFECT_CONFIGS = {
     },
 
     "Console_Gap": {
-        "total_images": 4,     # 부족분: 75-71=4장
+        "total_images": 54,    # 라벨링 71/125, 부족 54장
         "ref_dir": "Console/Console_Gap",
         "out_dir": "Console/Console_Gap",
         "data_ref": {
@@ -369,7 +369,7 @@ DEFECT_CONFIGS = {
     },
 
     "Console_Scratch": {
-        "total_images": 6,     # 부족분: 75-69=6장
+        "total_images": 56,    # 라벨링 69/125, 부족 56장
         "ref_dir": "Console/Console_Scratch",
         "out_dir": "Console/Console_Scratch",
         "data_ref": {
@@ -418,7 +418,7 @@ DEFECT_CONFIGS = {
 
     # ── Cylinder (bbox 없는 원본 이미지 방식) ─────────────────────────
     "Cylinder_Chip": {
-        "total_images": 23,    # 부족분: 75-52=23장
+        "total_images": 73,    # 라벨링 52/125, 부족 73장
         "ref_dir": "Cylinder/Cylinder_Chip",
         "out_dir": "Cylinder/Cylinder_Chip",
         "data_ref": {
@@ -468,7 +468,7 @@ DEFECT_CONFIGS = {
     },
 
     "Cylinder_PistonMiss": {
-        "total_images": 32,    # 부족분: 75-43=32장
+        "total_images": 82,    # 라벨링 43/125, 부족 82장
         "ref_dir": "Cylinder/Cylinder_PistonMiss",
         "out_dir": "Cylinder/Cylinder_PistonMiss",
         "data_ref": {
@@ -519,7 +519,7 @@ DEFECT_CONFIGS = {
     },
 
     "Cylinder_Porosity": {
-        "total_images": 0,     # 이미 초과 (99/75)
+        "total_images": 26,    # 라벨링 99/125, 부족 26장
         "ref_dir": "Cylinder/Cylinder_Porosity",
         "out_dir": "Cylinder/Cylinder_Porosity",
         "data_ref": {
@@ -568,7 +568,7 @@ DEFECT_CONFIGS = {
     },
 
     "Cylinder_RCS": {
-        "total_images": 75,    # 부족분: 75-0=75장
+        "total_images": 66,    # 라벨링 59/125, 부족 66장
         "ref_dir": "Cylinder/Cylinder_RCS",
         "out_dir": "Cylinder/Cylinder_RCS",
         "data_ref": {
@@ -619,7 +619,7 @@ DEFECT_CONFIGS = {
 
     # ── Wood (bbox 없는 원본 이미지 방식) ────────────────────────────
     "Wood_impurities": {
-        "total_images": 100,
+        "total_images": 0,     # 라벨링 126/125, 이미 초과
         "ref_dir": "Wood/Wood_impurities",
         "out_dir": "Wood/Wood_impurities",
         "data_ref": {
@@ -669,7 +669,7 @@ DEFECT_CONFIGS = {
     },
 
     "Wood_pits": {
-        "total_images": 100,
+        "total_images": 40,    # 라벨링 85/125, 부족 40장
         "ref_dir": "Wood/Wood_pits",
         "out_dir": "Wood/Wood_pits",
         "data_ref": {
@@ -760,6 +760,15 @@ def load_reference_images(defect_type, config):
         return _load_from_ref_dir(defect_type, config)
 
 
+def _resize_image(img, max_size=768):
+    """긴 쪽을 max_size로 리사이즈 (비율 유지). 토큰 절약용."""
+    w, h = img.size
+    if max(w, h) <= max_size:
+        return img
+    scale = max_size / max(w, h)
+    return img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+
 def _load_from_ref_dir(defect_type, config):
     """기존 방식: ref_dir의 모든 이미지 사용"""
     if "ref_dir" in config:
@@ -776,9 +785,10 @@ def _load_from_ref_dir(defect_type, config):
 
     result = []
     for idx, p in enumerate(imgs):
-        img = Image.open(p)
+        img = Image.open(p).convert("RGB")
+        img = _resize_image(img)
         buf = io.BytesIO()
-        img.save(buf, format='PNG')
+        img.save(buf, format='JPEG', quality=85)
         role = "NORMAL (no defect)" if idx == 0 else f"DEFECT sample #{idx}"
         result.append({'name': p.name, 'bytes': buf.getvalue(),
                        'role': role, 'is_normal': idx == 0})
@@ -812,9 +822,9 @@ def _load_from_data(defect_type, config):
 
     result = []
     p = normal_candidates[0]
-    img = Image.open(p)
+    img = _resize_image(Image.open(p).convert("RGB"))
     buf = io.BytesIO()
-    img.save(buf, format='PNG')
+    img.save(buf, format='JPEG', quality=85)
     result.append({'name': p.name, 'bytes': buf.getvalue(),
                    'role': 'NORMAL (no defect)', 'is_normal': True})
     print(f"  Loaded: {p.name} [NORMAL (no defect)]", flush=True)
@@ -834,9 +844,9 @@ def _load_from_data(defect_type, config):
     for idx, img_id in enumerate(selected_ids, start=1):
         fname = id2name[img_id]
         img_path = data_dir / fname
-        img = Image.open(img_path).convert("RGB")
+        img = _resize_image(Image.open(img_path).convert("RGB"))
         buf = io.BytesIO()
-        img.save(buf, format='PNG')
+        img.save(buf, format='JPEG', quality=85)
         role = f"DEFECT sample #{idx} (no bbox)"
         result.append({'name': fname, 'bytes': buf.getvalue(),
                        'role': role, 'is_normal': False})
@@ -971,18 +981,16 @@ def run_generation(defect_type, count_override=None):
 
                 # 정상 이미지 (항상 포함)
                 normal_ref = ref_data_list[0]
-                contents.append(types.Part.from_bytes(data=normal_ref['bytes'], mime_type='image/png'))
+                contents.append(types.Part.from_bytes(data=normal_ref['bytes'], mime_type='image/jpeg'))
 
-                # 결함 이미지 - 최대 4장 순환 선택
+                # 결함 이미지 - 1장 랜덤 선택
                 defect_refs    = ref_data_list[1:]
                 n_defect       = len(defect_refs)
-                MAX_DEFECT_REFS = min(2, n_defect)
-                start_ref      = i % n_defect
-                selected_indices = [(start_ref + k) % n_defect for k in range(MAX_DEFECT_REFS)]
+                selected_indices = [random.randint(0, n_defect - 1)]
 
                 for ref_idx in selected_indices:
                     ref = defect_refs[ref_idx]
-                    contents.append(types.Part.from_bytes(data=ref['bytes'], mime_type='image/png'))
+                    contents.append(types.Part.from_bytes(data=ref['bytes'], mime_type='image/jpeg'))
 
                 contents.append(prompt)
                 print(f"  Refs: normal + {len(selected_indices)} defect (indices {selected_indices})", flush=True)

@@ -230,6 +230,11 @@ mlruns/
 # annotation 백업 (data_augmented/ 내부라 위에서 이미 제외됨, 혹시 외부에 생길 경우 대비)
 *.backup_*
 
+# FID 테스트 이미지 디렉토리 (원본/생성/정상 이미지)
+scripts/FID_test/*/original_image/
+scripts/FID_test/*/ai_generated/
+scripts/FID_test/*/normal_00/
+
 # Gemini 증강 생성 이미지 (vision_ai_generated/)
 scripts/augmentation/vision_ai_generated/
 

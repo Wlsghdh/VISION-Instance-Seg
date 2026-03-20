@@ -1,0 +1,27 @@
+timestamp,class,comparison,dir_A,dir_B,n_A,n_B,fid_score,hypothesis_check
+2026-03-10 09:13:06,casting_Inclusoes,original_vs_normal_00,casting_Inclusoes/original_image,casting_Inclusoes/normal_00,9,100,273.3697,[ref] PASS
+2026-03-10 09:13:06,casting_Inclusoes,original_vs_ai_generated,casting_Inclusoes/original_image,casting_Inclusoes/ai_generated,9,100,81.7462,PASS (AI 81.75 < Normal 273.37)
+2026-03-10 09:14:32,casting_Rechupe,original_vs_normal_00,casting_Rechupe/original_image,casting_Rechupe/normal_00,9,100,164.9159,[ref] PASS
+2026-03-10 09:14:32,casting_Rechupe,original_vs_ai_generated,casting_Rechupe/original_image,casting_Rechupe/ai_generated,9,100,55.2652,PASS (AI 55.27 < Normal 164.92)
+2026-03-10 09:15:42,Console_Collision,original_vs_normal_00,Console_Collision/original_image,Console_Collision/normal_00,9,100,338.8293,[ref] PASS
+2026-03-10 09:15:42,Console_Collision,original_vs_ai_generated,Console_Collision/original_image,Console_Collision/ai_generated,9,75,184.9259,PASS (AI 184.93 < Normal 338.83)
+2026-03-10 09:17:03,Console_Dirty,original_vs_normal_00,Console_Dirty/original_image,Console_Dirty/normal_00,9,100,283.6753,[ref] PASS
+2026-03-10 09:17:03,Console_Dirty,original_vs_ai_generated,Console_Dirty/original_image,Console_Dirty/ai_generated,9,75,215.7639,PASS (AI 215.76 < Normal 283.68)
+2026-03-10 09:18:19,Console_Gap,original_vs_normal_00,Console_Gap/original_image,Console_Gap/normal_00,9,100,195.5051,[ref] PASS
+2026-03-10 09:18:19,Console_Gap,original_vs_ai_generated,Console_Gap/original_image,Console_Gap/ai_generated,9,75,139.5966,PASS (AI 139.60 < Normal 195.51)
+2026-03-10 09:19:41,Console_Scratch,original_vs_normal_00,Console_Scratch/original_image,Console_Scratch/normal_00,9,100,315.7728,[ref] PASS
+2026-03-10 09:19:41,Console_Scratch,original_vs_ai_generated,Console_Scratch/original_image,Console_Scratch/ai_generated,9,75,210.2804,PASS (AI 210.28 < Normal 315.77)
+2026-03-10 09:20:59,Cylinder_Chip,original_vs_normal_00,Cylinder_Chip/original_image,Cylinder_Chip/normal_00,9,100,152.8371,[ref] PASS
+2026-03-10 09:20:59,Cylinder_Chip,original_vs_ai_generated,Cylinder_Chip/original_image,Cylinder_Chip/ai_generated,9,75,102.7519,PASS (AI 102.75 < Normal 152.84)
+2026-03-10 09:22:17,Cylinder_PistonMiss,original_vs_normal_00,Cylinder_PistonMiss/original_image,Cylinder_PistonMiss/normal_00,9,100,258.8934,[ref] PASS
+2026-03-10 09:22:17,Cylinder_PistonMiss,original_vs_ai_generated,Cylinder_PistonMiss/original_image,Cylinder_PistonMiss/ai_generated,9,75,248.7979,PASS (AI 248.80 < Normal 258.89)
+2026-03-10 09:23:39,Cylinder_Porosity,original_vs_normal_00,Cylinder_Porosity/original_image,Cylinder_Porosity/normal_00,9,100,169.8138,[ref] PASS
+2026-03-10 09:23:39,Cylinder_Porosity,original_vs_ai_generated,Cylinder_Porosity/original_image,Cylinder_Porosity/ai_generated,9,75,112.7264,PASS (AI 112.73 < Normal 169.81)
+2026-03-10 09:24:56,Cylinder_RCS,original_vs_normal_00,Cylinder_RCS/original_image,Cylinder_RCS/normal_00,9,100,234.574,[ref] PASS
+2026-03-10 09:24:56,Cylinder_RCS,original_vs_ai_generated,Cylinder_RCS/original_image,Cylinder_RCS/ai_generated,9,75,153.8365,PASS (AI 153.84 < Normal 234.57)
+2026-03-10 09:26:16,screw_defect,original_vs_normal_00,screw_defect/original_image,screw_defect/normal_00,9,100,136.0289,[ref] PASS
+2026-03-10 09:26:16,screw_defect,original_vs_ai_generated,screw_defect/original_image,screw_defect/ai_generated,9,100,80.381,PASS (AI 80.38 < Normal 136.03)
+2026-03-10 09:27:25,Wood_impurities,original_vs_normal_00,Wood_impurities/original_image,Wood_impurities/normal_00,9,100,242.7475,[ref] PASS
+2026-03-10 09:27:25,Wood_impurities,original_vs_ai_generated,Wood_impurities/original_image,Wood_impurities/ai_generated,9,100,170.3725,PASS (AI 170.37 < Normal 242.75)
+2026-03-10 09:28:46,Wood_pits,original_vs_normal_00,Wood_pits/original_image,Wood_pits/normal_00,9,100,315.8082,[ref] PASS
+2026-03-10 09:28:46,Wood_pits,original_vs_ai_generated,Wood_pits/original_image,Wood_pits/ai_generated,9,100,260.1781,PASS (AI 260.18 < Normal 315.81)
