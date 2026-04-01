@@ -11,6 +11,9 @@
     # 7모델 비교
     python -m training.train --category Cable --experiment exp3 --condition original_only --model all
 
+    # epoch 기반 학습 (데이터 양에 비례하여 iter 자동 계산)
+    python -m training.train --category Screw --experiment exp1 --condition all --model mask_rcnn --epochs 200
+
     # 하이퍼파라미터 오버라이드
     python -m training.train --category Screw --experiment exp2 --condition cond3 --model maskdino --max-iter 15000 --lr 5e-5
 
@@ -20,6 +23,7 @@
 
 import argparse
 import json
+import math
 import time
 from pathlib import Path
 from typing import Dict, List
@@ -73,6 +77,20 @@ def run_single(category: str, experiment: str, condition: str,
     merged_dir = prepare_dataset(experiment, condition, category, hyperparams.get("seed", 42))
     train_images_dir = merged_dir / "images"
     train_ann_path = merged_dir / "annotations.json"
+
+    # epoch 기반이면 데이터 수로부터 max_iter 계산
+    if "epochs" in hyperparams and hyperparams["epochs"] is not None:
+        with open(train_ann_path) as f:
+            n_images = len(json.load(f)["images"])
+        batch_size = hyperparams.get("batch_size", 2)
+        epochs = hyperparams["epochs"]
+        max_iter = math.ceil(epochs * n_images / batch_size)
+        # eval_period도 비례 조정 (약 10 epoch마다)
+        eval_period = max(100, math.ceil(10 * n_images / batch_size))
+        hyperparams = dict(hyperparams)
+        hyperparams["max_iter"] = max_iter
+        hyperparams["eval_period"] = eval_period
+        print(f"  [epoch 모드] {n_images}장 x {epochs}ep = {max_iter} iter (eval: {eval_period} iter마다)")
 
     # 2. Val 데이터 준비
     val_images_dir, val_ann_path = prepare_val_dataset(category)
@@ -172,11 +190,15 @@ def main():
     parser.add_argument('--batch-size', type=int, default=None)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--eval-period', type=int, default=None)
+    parser.add_argument('--epochs', type=int, default=None,
+                        help='epoch 기반 학습 (데이터 양에 비례하여 iter 자동 계산)')
 
     args = parser.parse_args()
 
     # 하이퍼파라미터 구성
     hyperparams = dict(DEFAULT_HYPERPARAMS)
+    if args.epochs is not None:
+        hyperparams["epochs"] = args.epochs
     if args.max_iter is not None:
         hyperparams["max_iter"] = args.max_iter
     if args.lr is not None:

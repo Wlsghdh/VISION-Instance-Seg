@@ -1,0 +1,40 @@
+timestamp,class,comparison,dir_A,dir_B,n_A,n_B,fid_score,hypothesis_check
+2026-03-24 16:07:19,casting_Inclusoes,original_vs_ai_generated,original_image,ai_generated,9,100,81.7384,PASS (AI 81.74 < Normal 273.37)
+2026-03-24 16:07:39,casting_Rechupe,original_vs_ai_generated,original_image,ai_generated,9,100,55.2681,PASS (AI 55.27 < Normal 164.94)
+2026-03-24 16:07:58,Console_Collision,original_vs_ai_generated,original_image,ai_generated,9,75,184.8347,PASS (AI 184.83 < Normal 338.76)
+2026-03-24 16:08:18,Console_Dirty,original_vs_ai_generated,original_image,ai_generated,9,75,215.7846,PASS (AI 215.78 < Normal 283.64)
+2026-03-24 16:08:37,Console_Gap,original_vs_ai_generated,original_image,ai_generated,9,75,139.6193,PASS (AI 139.62 < Normal 195.53)
+2026-03-24 16:08:56,Console_Scratch,original_vs_ai_generated,original_image,ai_generated,9,75,210.3126,PASS (AI 210.31 < Normal 315.85)
+2026-03-24 16:09:16,Cylinder_Chip,original_vs_ai_generated,original_image,ai_generated,9,75,102.7635,PASS (AI 102.76 < Normal 152.84)
+2026-03-24 16:09:35,Cylinder_PistonMiss,original_vs_ai_generated,original_image,ai_generated,9,75,248.8305,PASS (AI 248.83 < Normal 258.97)
+2026-03-24 16:09:54,Cylinder_Porosity,original_vs_ai_generated,original_image,ai_generated,9,75,112.7219,PASS (AI 112.72 < Normal 169.82)
+2026-03-24 16:10:13,Cylinder_RCS,original_vs_ai_generated,original_image,ai_generated,9,75,153.8124,PASS (AI 153.81 < Normal 234.58)
+2026-03-24 16:10:32,screw_defect,original_vs_ai_generated,original_image,ai_generated,9,100,80.3197,PASS (AI 80.32 < Normal 136.08)
+2026-03-24 16:10:50,Wood_impurities,original_vs_ai_generated,original_image,ai_generated,9,100,170.3773,PASS (AI 170.38 < Normal 242.71)
+2026-03-24 16:11:08,Wood_pits,original_vs_ai_generated,original_image,ai_generated,9,100,260.2517,PASS (AI 260.25 < Normal 315.91)
+2026-03-24 16:11:32,casting_Inclusoes,original_vs_normal_00,original_image,normal_00,9,100,273.3656,[ref] PASS
+2026-03-24 16:11:49,casting_Rechupe,original_vs_normal_00,original_image,normal_00,9,100,164.9438,[ref] PASS
+2026-03-24 16:12:12,Console_Collision,original_vs_normal_00,original_image,normal_00,9,100,338.7614,[ref] PASS
+2026-03-24 16:12:35,Console_Dirty,original_vs_normal_00,original_image,normal_00,9,100,283.6446,[ref] PASS
+2026-03-24 16:12:57,Console_Gap,original_vs_normal_00,original_image,normal_00,9,100,195.5279,[ref] PASS
+2026-03-24 16:13:21,Console_Scratch,original_vs_normal_00,original_image,normal_00,9,100,315.8545,[ref] PASS
+2026-03-24 16:13:44,Cylinder_Chip,original_vs_normal_00,original_image,normal_00,9,100,152.8421,[ref] PASS
+2026-03-24 16:14:07,Cylinder_PistonMiss,original_vs_normal_00,original_image,normal_00,9,100,258.9728,[ref] PASS
+2026-03-24 16:14:30,Cylinder_Porosity,original_vs_normal_00,original_image,normal_00,9,100,169.8212,[ref] PASS
+2026-03-24 16:14:54,Cylinder_RCS,original_vs_normal_00,original_image,normal_00,9,100,234.5753,[ref] PASS
+2026-03-24 16:15:12,screw_defect,original_vs_normal_00,original_image,normal_00,9,100,136.0807,[ref] PASS
+2026-03-24 16:15:35,Wood_impurities,original_vs_normal_00,original_image,normal_00,9,100,242.7124,[ref] PASS
+2026-03-24 16:15:59,Wood_pits,original_vs_normal_00,original_image,normal_00,9,100,315.9131,[ref] PASS
+2026-03-24 16:16:25,casting_Inclusoes,ai_vs_normal_00,ai_generated,normal_00,100,100,278.7609,—
+2026-03-24 16:16:46,casting_Rechupe,ai_vs_normal_00,ai_generated,normal_00,100,100,158.4307,—
+2026-03-24 16:17:09,Console_Collision,ai_vs_normal_00,ai_generated,normal_00,75,100,181.1631,—
+2026-03-24 16:17:33,Console_Dirty,ai_vs_normal_00,ai_generated,normal_00,75,100,185.1191,—
+2026-03-24 16:17:57,Console_Gap,ai_vs_normal_00,ai_generated,normal_00,75,100,119.8905,—
+2026-03-24 16:18:21,Console_Scratch,ai_vs_normal_00,ai_generated,normal_00,75,100,125.0988,—
+2026-03-24 16:18:45,Cylinder_Chip,ai_vs_normal_00,ai_generated,normal_00,75,100,142.3276,—
+2026-03-24 16:19:09,Cylinder_PistonMiss,ai_vs_normal_00,ai_generated,normal_00,75,100,83.2905,—
+2026-03-24 16:19:34,Cylinder_Porosity,ai_vs_normal_00,ai_generated,normal_00,75,100,160.4304,—
+2026-03-24 16:19:58,Cylinder_RCS,ai_vs_normal_00,ai_generated,normal_00,75,100,146.1675,—
+2026-03-24 16:20:16,screw_defect,ai_vs_normal_00,ai_generated,normal_00,100,100,106.3758,—
+2026-03-24 16:20:40,Wood_impurities,ai_vs_normal_00,ai_generated,normal_00,100,100,186.929,—
+2026-03-24 16:21:04,Wood_pits,ai_vs_normal_00,ai_generated,normal_00,100,100,274.4675,—
