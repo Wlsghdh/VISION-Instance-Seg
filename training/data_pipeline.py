@@ -97,6 +97,54 @@ def _sample_images(data: dict, images_dir: Path, n: int, seed: int):
     return sampled, anns
 
 
+def _sample_images_per_class(data: dict, images_dir: Path,
+                             n_per_class: int, seed: int):
+    """클래스별 균형 샘플링: 각 클래스에서 n_per_class장씩 샘플 (n_per_class=-1이면 전체)"""
+    import random
+    from collections import defaultdict
+
+    # 이미지별 annotation의 category_id 집합
+    img_categories = defaultdict(set)
+    for ann in data["annotations"]:
+        img_categories[ann["image_id"]].add(ann["category_id"])
+
+    # 유효한 이미지만
+    valid_images = {
+        img["id"]: img for img in data["images"]
+        if img["id"] in img_categories
+        and (images_dir / img["file_name"]).exists()
+    }
+
+    # 카테고리별 이미지 분류 (주요 카테고리 기준)
+    cat_ids = sorted({c["id"] for c in data.get("categories", [])})
+    cat_to_images = defaultdict(list)
+    for img_id, cats in img_categories.items():
+        if img_id not in valid_images:
+            continue
+        # 이미지의 주요 카테고리 (가장 많은 annotation의 카테고리)
+        primary_cat = max(cats, key=lambda c: sum(
+            1 for a in data["annotations"]
+            if a["image_id"] == img_id and a["category_id"] == c
+        ))
+        cat_to_images[primary_cat].append(valid_images[img_id])
+
+    # 클래스별 샘플링
+    rng = random.Random(seed)
+    sampled_ids = set()
+    for cat_id in cat_ids:
+        images_for_cat = cat_to_images.get(cat_id, [])
+        if n_per_class < 0 or n_per_class >= len(images_for_cat):
+            selected = images_for_cat
+        else:
+            selected = rng.sample(images_for_cat, n_per_class)
+        for img in selected:
+            sampled_ids.add(img["id"])
+
+    sampled = [valid_images[img_id] for img_id in sampled_ids]
+    anns = [a for a in data["annotations"] if a["image_id"] in sampled_ids]
+    return sampled, anns
+
+
 def _merge_sources(sources: list, out_dir: Path, categories: list) -> Tuple[int, int]:
     """여러 소스를 하나로 병합 (ID 재부여, 파일 복사)"""
     out_images_dir = out_dir / 'images'
@@ -188,7 +236,7 @@ def prepare_dataset(experiment: str, condition: str, category: str,
 
     sources = []
     n_original = params["n_original"]
-    n_genai = params["n_genai"]
+    n_genai_per_class = params["n_genai_per_class"]
     n_traditional = params["n_traditional"]
 
     # 원본 데이터
@@ -203,13 +251,15 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     else:
         print(f"  [WARN] 원본 없음: {cat_info['train_ann']}")
 
-    # GenAI 데이터
-    if n_genai > 0 and cat_info["genai_ann"].exists():
+    # GenAI 데이터 (클래스당 균형 샘플링)
+    if n_genai_per_class > 0 and cat_info["genai_ann"].exists():
         genai_data = load_coco(cat_info["genai_ann"])
-        genai_imgs, genai_anns = _sample_images(genai_data, cat_info["genai_images"], n_genai, seed + 1)
-        print(f"  GenAI: {len(genai_imgs)}장")
+        genai_imgs, genai_anns = _sample_images_per_class(
+            genai_data, cat_info["genai_images"], n_genai_per_class, seed + 1
+        )
+        print(f"  GenAI: {len(genai_imgs)}장 (클래스당 {n_genai_per_class}장 목표)")
         sources.append((cat_info["genai_images"], genai_imgs, genai_anns))
-    elif n_genai > 0:
+    elif n_genai_per_class > 0:
         print(f"  [WARN] GenAI 없음: {cat_info['genai_ann']}")
 
     # 전통 증강 데이터

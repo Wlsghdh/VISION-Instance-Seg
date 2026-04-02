@@ -24,60 +24,58 @@ MASK2FORMER_REPO = PROJECT_ROOT.parent / 'Mask2Former'
 # ============================================================
 # 카테고리 정의
 # ============================================================
+def _cat(name, classes, train_images_subdir="images", train_ann_name="annotations.json",
+         val_filter_category_id=None, val_category_remap=None):
+    """카테고리 설정 헬퍼"""
+    return {
+        "classes": classes,
+        "coco_categories": [
+            {"id": i, "name": c, "supercategory": "defect"} for i, c in enumerate(classes)
+        ],
+        "train_images": DATA_DIR / name / "train" / train_images_subdir if train_images_subdir else DATA_DIR / name / "train",
+        "train_ann": DATA_DIR / name / "train" / train_ann_name,
+        "val_images": DATA_DIR / name / "val",
+        "val_ann": DATA_DIR / name / "val" / "_annotations.coco.json",
+        "genai_images": DATA_AUG_DIR / name / "gen_ai" / "images",
+        "genai_ann": DATA_AUG_DIR / name / "gen_ai" / "annotations.json",
+        "trad_images": DATA_AUG_DIR / name / "traditional_aug" / "images",
+        "trad_ann": DATA_AUG_DIR / name / "traditional_aug" / "annotations.json",
+        "val_filter_category_id": val_filter_category_id,
+        "val_category_remap": val_category_remap,
+        "num_classes": len(classes),
+    }
+
+
 CATEGORIES = {
-    "Cable": {
-        "classes": ["thunderbolt"],
-        "coco_categories": [
-            {"id": 1, "name": "thunderbolt", "supercategory": "defect"},
-        ],
-        "train_images": DATA_DIR / "Cable" / "train" / "images",
-        "train_ann": DATA_DIR / "Cable" / "train" / "annotations.json",
-        "val_images": DATA_DIR / "Cable" / "val",  # 이미지가 직접 저장됨 (images/ 하위 없음)
-        "val_ann": DATA_DIR / "Cable" / "val" / "_annotations.coco.json",
-        "genai_images": DATA_AUG_DIR / "Cable" / "gen_ai" / "images",
-        "genai_ann": DATA_AUG_DIR / "Cable" / "gen_ai" / "annotations.json",
-        "trad_images": DATA_AUG_DIR / "Cable" / "traditional_aug" / "images",
-        "trad_ann": DATA_AUG_DIR / "Cable" / "traditional_aug" / "annotations.json",
-        # val에 break(id=0) + thunderbolt(id=1) 혼재 → thunderbolt(id=1)만 평가
-        "val_filter_category_id": 1,
-        "val_category_remap": {1: 0},  # val의 category_id 1 → 학습용 0으로 리매핑
-        "num_classes": 1,
-    },
-    "Screw": {
-        "classes": ["defect"],
-        "coco_categories": [
-            {"id": 0, "name": "defect", "supercategory": "defect"},
-        ],
-        "train_images": DATA_DIR / "Screw" / "train" / "images",
-        "train_ann": DATA_DIR / "Screw" / "train" / "annotations.json",
-        "val_images": DATA_DIR / "Screw" / "val",
-        "val_ann": DATA_DIR / "Screw" / "val" / "_annotations.coco.json",
-        "genai_images": DATA_AUG_DIR / "Screw" / "gen_ai" / "images",
-        "genai_ann": DATA_AUG_DIR / "Screw" / "gen_ai" / "annotations.json",
-        "trad_images": DATA_AUG_DIR / "Screw" / "traditional_aug" / "images",
-        "trad_ann": DATA_AUG_DIR / "Screw" / "traditional_aug" / "annotations.json",
-        "val_filter_category_id": None,  # 필터링 불필요
-        "val_category_remap": None,
-        "num_classes": 1,
-    },
-    "Casting": {
-        "classes": ["Inclusoes", "Rechupe"],
-        "coco_categories": [
-            {"id": 0, "name": "Inclusoes", "supercategory": "defect"},
-            {"id": 1, "name": "Rechupe", "supercategory": "defect"},
-        ],
-        "train_images": DATA_DIR / "Casting" / "train" / "images",
-        "train_ann": DATA_DIR / "Casting" / "train" / "annotations.json",
-        "val_images": DATA_DIR / "Casting" / "val",
-        "val_ann": DATA_DIR / "Casting" / "val" / "_annotations.coco.json",
-        "genai_images": DATA_AUG_DIR / "Casting" / "gen_ai" / "images",
-        "genai_ann": DATA_AUG_DIR / "Casting" / "gen_ai" / "annotations.json",
-        "trad_images": DATA_AUG_DIR / "Casting" / "traditional_aug" / "images",
-        "trad_ann": DATA_AUG_DIR / "Casting" / "traditional_aug" / "annotations.json",
-        "val_filter_category_id": None,
-        "val_category_remap": None,
-        "num_classes": 2,
-    },
+    # === 기존 3종 (train/images/ + annotations.json) ===
+    "Cable": _cat("Cable", ["thunderbolt"],
+                  val_filter_category_id=1, val_category_remap={1: 0}),
+    "Screw": _cat("Screw", ["defect"]),
+    "Casting": _cat("Casting", ["Inclusoes", "Rechupe"]),
+
+    # === 나머지 11종 (train/ 직접 + _annotations.coco.json) ===
+    "Capacitor": _cat("Capacitor", ["0"],
+                      train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "Console": _cat("Console", ["Collision", "Dirty", "Gap", "Scratch"],
+                    train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "Cylinder": _cat("Cylinder", ["Chip", "PistonMiss", "Porosity", "RCS"],
+                     train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "Electronics": _cat("Electronics", ["damage"],
+                        train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "Groove": _cat("Groove", ["s_burr", "s_scratch"],
+                   train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "Hemisphere": _cat("Hemisphere", ["Defect-A", "Defect-B", "Defect-C", "Defect-D"],
+                       train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "Lens": _cat("Lens", ["Fiber", "Flash Particle", "Hole", "Surface Damage", "Tear"],
+                 train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "PCB_1": _cat("PCB_1", ["missing_hole", "mouse_bite", "open_circuit", "short", "spur", "spurious_copper"],
+                  train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "PCB_2": _cat("PCB_2", ["defect1", "defect2", "defect3", "defect4", "defect5", "defect6", "defect7"],
+                  train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "Ring": _cat("Ring", ["t_contamination", "t_scratch", "unfinished_surface"],
+                 train_images_subdir="", train_ann_name="_annotations.coco.json"),
+    "Wood": _cat("Wood", ["impurities", "pits"],
+                 train_images_subdir="", train_ann_name="_annotations.coco.json"),
 }
 
 # ============================================================
@@ -132,35 +130,35 @@ MODELS = {
 # ============================================================
 EXPERIMENTS = {
     "exp1": {
-        "description": "생성AI 증강 수에 따른 성능 변화",
+        "description": "생성AI 증강 수에 따른 성능 변화 (클래스당 0~125장)",
         "models": ["mask_rcnn", "cascade_mask_rcnn"],
         "conditions": {
-            "baseline":   {"n_original": 25, "n_genai": 0,   "n_traditional": 0},
-            "genai_50":   {"n_original": 25, "n_genai": 50,  "n_traditional": 0},
-            "genai_100":  {"n_original": 25, "n_genai": 100, "n_traditional": 0},
-            "genai_150":  {"n_original": 25, "n_genai": 150, "n_traditional": 0},
-            "genai_200":  {"n_original": 25, "n_genai": 200, "n_traditional": 0},
-            "genai_250":  {"n_original": 25, "n_genai": 250, "n_traditional": 0},
+            "baseline":   {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 0},
+            "genai_25":   {"n_original": -1, "n_genai_per_class": 25,  "n_traditional": 0},
+            "genai_50":   {"n_original": -1, "n_genai_per_class": 50,  "n_traditional": 0},
+            "genai_75":   {"n_original": -1, "n_genai_per_class": 75,  "n_traditional": 0},
+            "genai_100":  {"n_original": -1, "n_genai_per_class": 100, "n_traditional": 0},
+            "genai_125":  {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 0},
         },
     },
     "exp2": {
         "description": "전통적 증강 vs 생성형 AI 증강 비교",
         "models": ["mask_rcnn", "cascade_mask_rcnn", "maskdino"],
         "conditions": {
-            "cond1": {"n_original": 25, "n_genai": 0,   "n_traditional": 0},
-            "cond2": {"n_original": 25, "n_genai": 0,   "n_traditional": 250},
-            "cond3": {"n_original": 25, "n_genai": 250, "n_traditional": 0},
-            "cond4": {"n_original": 25, "n_genai": 250, "n_traditional": 250},
-            "cond5": {"n_original": 25, "n_genai": 250, "n_traditional": 2750},
+            "cond1": {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 0},
+            "cond2": {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 250},
+            "cond3": {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 0},
+            "cond4": {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 250},
+            "cond5": {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 2750},
         },
     },
     "exp3": {
         "description": "7종 모델 비교",
         "models": list(MODELS.keys()),
         "conditions": {
-            "original_only":  {"n_original": -1, "n_genai": 0,    "n_traditional": 0},     # 원본 전체
-            "with_trad":      {"n_original": -1, "n_genai": 0,    "n_traditional": 3000},   # 원본 + 전통 3000
-            "with_genai_trad": {"n_original": -1, "n_genai": 250, "n_traditional": 2750},   # 원본 + genai 250 + 전통 2750
+            "original_only":   {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 0},      # 원본 전체
+            "with_trad":       {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 3000},    # 원본 + 전통 3000
+            "with_genai_trad": {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 2750},    # 원본 + genai 125/cls + 전통 2750
         },
     },
 }
@@ -169,15 +167,19 @@ EXPERIMENTS = {
 # 기본 하이퍼파라미터
 # ============================================================
 DEFAULT_HYPERPARAMS = {
-    "max_iter": 10000,
+    # 에폭 기반 학습 (early stopping이 자동 종료)
+    "max_epochs": 300,
     "lr": 1e-4,
     "batch_size": 2,
     "seed": 42,
-    "warmup_iters": 200,
-    "eval_period": 500,
-    "checkpoint_period": 1000,
+    "warmup_epochs": 5,
+    "eval_period_epochs": 5,       # N 에폭마다 평가
+    "checkpoint_period_epochs": 10,
     "input_min_size": (480, 512, 544, 576, 608, 640),
     "input_max_size": 800,
+    # Early stopping
+    "early_stopping_patience": 15,  # eval_period_epochs 단위 (15 * 5 = 75 에폭 동안 개선 없으면 중단)
+    "early_stopping_metric": "segm/AP",  # 모니터링 지표
 }
 
 # ============================================================

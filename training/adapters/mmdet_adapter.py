@@ -6,9 +6,12 @@ MMDetection 기반 모델 어댑터
 """
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+import torch
 
 from .base import ModelAdapter
 
@@ -110,15 +113,18 @@ class MMDetAdapter(ModelAdapter):
         # 모델의 num_classes 업데이트
         self._update_num_classes(cfg)
 
-        # 학습 설정
-        max_iter = hyperparams.get("max_iter", 10000)
+        # 에폭 기반 학습 설정
+        max_epochs = hyperparams.get("max_epochs", 300)
         lr = hyperparams.get("lr", 1e-4)
+        eval_period_epochs = hyperparams.get("eval_period_epochs", 5)
+        checkpoint_period_epochs = hyperparams.get("checkpoint_period_epochs", 10)
+        warmup_epochs = hyperparams.get("warmup_epochs", 5)
+        patience = hyperparams.get("early_stopping_patience", 15)
 
-        # iteration 기반 학습으로 변환
         cfg.train_cfg = dict(
-            type="IterBasedTrainLoop",
-            max_iters=max_iter,
-            val_interval=hyperparams.get("eval_period", 500),
+            type="EpochBasedTrainLoop",
+            max_epochs=max_epochs,
+            val_interval=eval_period_epochs,
         )
         cfg.val_cfg = dict(type="ValLoop")
         cfg.test_cfg = dict(type="TestLoop")
@@ -129,14 +135,14 @@ class MMDetAdapter(ModelAdapter):
             optimizer=dict(type="AdamW", lr=lr, weight_decay=0.05),
         )
 
-        # LR scheduler
+        # LR scheduler (에폭 기반)
         cfg.param_scheduler = [
             dict(type="LinearLR", start_factor=0.001,
-                 by_epoch=False, begin=0,
-                 end=hyperparams.get("warmup_iters", 200)),
-            dict(type="CosineAnnealingLR", by_epoch=False,
-                 begin=hyperparams.get("warmup_iters", 200),
-                 end=max_iter),
+                 by_epoch=True, begin=0,
+                 end=warmup_epochs),
+            dict(type="CosineAnnealingLR", by_epoch=True,
+                 begin=warmup_epochs,
+                 end=max_epochs),
         ]
 
         # 체크포인트
@@ -146,13 +152,32 @@ class MMDetAdapter(ModelAdapter):
             param_scheduler=dict(type="ParamSchedulerHook"),
             checkpoint=dict(
                 type="CheckpointHook",
-                by_epoch=False,
-                interval=hyperparams.get("checkpoint_period", 1000),
+                by_epoch=True,
+                interval=checkpoint_period_epochs,
                 save_best="coco/segm_mAP",
                 rule="greater",
             ),
             sampler_seed=dict(type="DistSamplerSeedHook"),
         )
+
+        # Early stopping hook
+        cfg.custom_hooks = [
+            dict(
+                type="EarlyStoppingHook",
+                monitor="coco/segm_mAP",
+                patience=patience,
+                min_delta=0.0,
+                rule="greater",
+            ),
+        ]
+
+        self._max_epochs = max_epochs
+        self._eval_period_epochs = eval_period_epochs
+        self._patience = patience
+
+        print(f"  Max epochs: {max_epochs}")
+        print(f"  Eval every {eval_period_epochs} epochs")
+        print(f"  Early stopping patience: {patience} evals ({patience * eval_period_epochs} epochs)")
 
         cfg.work_dir = str(output_dir)
         cfg.seed = hyperparams.get("seed", 42)
@@ -197,14 +222,37 @@ class MMDetAdapter(ModelAdapter):
 
         print(f"\n{'='*60}")
         print(f"  학습 시작: {self.model_info['display_name']} (mmdet)")
-        print(f"  MAX_ITER: {self.runner_cfg.train_cfg['max_iters']}")
+        print(f"  MAX_EPOCHS: {self._max_epochs}")
         print(f"  OUTPUT: {self.runner_cfg.work_dir}")
         print(f"{'='*60}\n")
+
+        # GPU 메모리 추적 시작
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
 
         runner = Runner.from_cfg(self.runner_cfg)
         runner.train()
 
-        return {"model": self.model_name, "status": "completed"}
+        # GPU 메모리 측정
+        peak_memory_mb = None
+        if torch.cuda.is_available():
+            peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
+
+        # 학습 종료 에폭 확인
+        final_epoch = runner.epoch + 1  # 0-indexed → 1-indexed
+        early_stopped = final_epoch < self._max_epochs
+
+        metrics = {
+            "model": self.model_name,
+            "status": "completed",
+            "total_epochs": final_epoch,
+            "max_epochs": self._max_epochs,
+            "peak_memory_mb": round(peak_memory_mb, 1) if peak_memory_mb else None,
+            "early_stopped": early_stopped,
+            "early_stop_epoch": final_epoch if early_stopped else None,
+        }
+
+        return metrics
 
     def evaluate(self, model_path: Optional[Path] = None) -> Dict[str, float]:
         """평가 실행"""

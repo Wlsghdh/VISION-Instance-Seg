@@ -1,5 +1,5 @@
 """
-통합 학습 CLI
+통합 학습 CLI (에폭 기반 + Early Stopping)
 
 사용법:
     # 단일 실행
@@ -11,11 +11,11 @@
     # 7모델 비교
     python -m training.train --category Cable --experiment exp3 --condition original_only --model all
 
-    # epoch 기반 학습 (데이터 양에 비례하여 iter 자동 계산)
-    python -m training.train --category Screw --experiment exp1 --condition all --model mask_rcnn --epochs 200
-
     # 하이퍼파라미터 오버라이드
-    python -m training.train --category Screw --experiment exp2 --condition cond3 --model maskdino --max-iter 15000 --lr 5e-5
+    python -m training.train --category Screw --experiment exp2 --condition cond3 --model maskdino --max-epochs 500 --lr 5e-5
+
+    # Early stopping patience 조절
+    python -m training.train --category Cable --experiment exp1 --condition all --model mask_rcnn --patience 20
 
     # 평가만
     python -m training.train --category Cable --experiment exp2 --condition cond1 --model mask_rcnn --eval-only
@@ -78,20 +78,6 @@ def run_single(category: str, experiment: str, condition: str,
     train_images_dir = merged_dir / "images"
     train_ann_path = merged_dir / "annotations.json"
 
-    # epoch 기반이면 데이터 수로부터 max_iter 계산
-    if "epochs" in hyperparams and hyperparams["epochs"] is not None:
-        with open(train_ann_path) as f:
-            n_images = len(json.load(f)["images"])
-        batch_size = hyperparams.get("batch_size", 2)
-        epochs = hyperparams["epochs"]
-        max_iter = math.ceil(epochs * n_images / batch_size)
-        # eval_period도 비례 조정 (약 10 epoch마다)
-        eval_period = max(100, math.ceil(10 * n_images / batch_size))
-        hyperparams = dict(hyperparams)
-        hyperparams["max_iter"] = max_iter
-        hyperparams["eval_period"] = eval_period
-        print(f"  [epoch 모드] {n_images}장 x {epochs}ep = {max_iter} iter (eval: {eval_period} iter마다)")
-
     # 2. Val 데이터 준비
     val_images_dir, val_ann_path = prepare_val_dataset(category)
 
@@ -123,8 +109,16 @@ def run_single(category: str, experiment: str, condition: str,
         train_results = adapter.train()
         elapsed = time.time() - start_time
         result["train"] = train_results
-        result["train_time_sec"] = elapsed
+        result["train_time_sec"] = round(elapsed, 1)
+        result["peak_memory_mb"] = train_results.get("peak_memory_mb")
+        result["early_stopped"] = train_results.get("early_stopped", False)
+        result["early_stop_epoch"] = train_results.get("early_stop_epoch")
+        result["total_epochs"] = train_results.get("total_epochs")
         print(f"\n  학습 완료: {elapsed:.1f}초")
+        if train_results.get("peak_memory_mb"):
+            print(f"  GPU 피크 메모리: {train_results['peak_memory_mb']:.1f} MB")
+        if train_results.get("early_stopped"):
+            print(f"  Early stopped at epoch {train_results['early_stop_epoch']}")
 
         # 학습 후 자동 평가
         try:
@@ -185,30 +179,30 @@ def main():
                         help='평가만 실행 (학습 스킵)')
 
     # 하이퍼파라미터 오버라이드
-    parser.add_argument('--max-iter', type=int, default=None)
+    parser.add_argument('--max-epochs', type=int, default=None)
     parser.add_argument('--lr', type=float, default=None)
     parser.add_argument('--batch-size', type=int, default=None)
     parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--eval-period', type=int, default=None)
-    parser.add_argument('--epochs', type=int, default=None,
-                        help='epoch 기반 학습 (데이터 양에 비례하여 iter 자동 계산)')
+    parser.add_argument('--eval-period-epochs', type=int, default=None)
+    parser.add_argument('--patience', type=int, default=None,
+                        help='Early stopping patience (eval 횟수)')
 
     args = parser.parse_args()
 
     # 하이퍼파라미터 구성
     hyperparams = dict(DEFAULT_HYPERPARAMS)
-    if args.epochs is not None:
-        hyperparams["epochs"] = args.epochs
-    if args.max_iter is not None:
-        hyperparams["max_iter"] = args.max_iter
+    if args.max_epochs is not None:
+        hyperparams["max_epochs"] = args.max_epochs
     if args.lr is not None:
         hyperparams["lr"] = args.lr
     if args.batch_size is not None:
         hyperparams["batch_size"] = args.batch_size
     if args.seed is not None:
         hyperparams["seed"] = args.seed
-    if args.eval_period is not None:
-        hyperparams["eval_period"] = args.eval_period
+    if args.eval_period_epochs is not None:
+        hyperparams["eval_period_epochs"] = args.eval_period_epochs
+    if args.patience is not None:
+        hyperparams["early_stopping_patience"] = args.patience
 
     # 범위 결정
     categories = list(CATEGORIES.keys()) if args.category == 'all' else [args.category]
@@ -270,11 +264,19 @@ def main():
 
     for r in all_results:
         status = "OK" if "error" not in r else "FAIL"
-        eval_info = ""
+        parts = [f"[{status}] {r['category']}/{r['condition']}/{r['model']}"]
         if "eval" in r:
             segm_ap = r["eval"].get("segm_AP", r["eval"].get("coco/segm_mAP", "N/A"))
-            eval_info = f" segm_AP={segm_ap}"
-        print(f"  [{status}] {r['category']}/{r['condition']}/{r['model']}{eval_info}")
+            parts.append(f"segm_AP={segm_ap}")
+        if r.get("total_epochs"):
+            parts.append(f"epochs={r['total_epochs']}")
+        if r.get("early_stopped"):
+            parts.append(f"early_stop@{r['early_stop_epoch']}")
+        if r.get("peak_memory_mb"):
+            parts.append(f"mem={r['peak_memory_mb']:.0f}MB")
+        if r.get("train_time_sec"):
+            parts.append(f"time={r['train_time_sec']:.0f}s")
+        print(f"  {' | '.join(parts)}")
 
 
 if __name__ == '__main__':

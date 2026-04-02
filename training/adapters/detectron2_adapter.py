@@ -7,12 +7,81 @@ Detectron2 기반 모델 어댑터
 """
 
 import json
+import math
 import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import torch
+
 from .base import ModelAdapter
+
+
+class EarlyStoppingHook:
+    """
+    Detectron2용 Early Stopping Hook.
+    eval_period마다 metric을 체크하여 patience 횟수 동안 개선 없으면 학습 중단.
+    """
+
+    def __init__(self, eval_period: int, patience: int, metric_name: str = "segm/AP",
+                 iters_per_epoch: int = 1):
+        self.eval_period = eval_period
+        self.patience = patience
+        self.metric_name = metric_name
+        self.iters_per_epoch = iters_per_epoch
+        self.best_metric = -float("inf")
+        self.best_iter = 0
+        self.num_bad_evals = 0
+        self.stopped_iter = None
+        self.stopped_epoch = None
+        self.trainer = None
+
+    def before_train(self):
+        pass
+
+    def after_step(self):
+        next_iter = self.trainer.iter + 1
+        if next_iter % self.eval_period != 0:
+            return
+        if next_iter <= 0:
+            return
+
+        # metrics.json에서 최신 eval 결과 읽기
+        storage = self.trainer.storage
+        try:
+            metric_val = storage.latest().get(self.metric_name, None)
+            if metric_val is not None:
+                metric_val = metric_val[0]  # (value, iteration) 튜플
+        except Exception:
+            metric_val = None
+
+        if metric_val is None:
+            return
+
+        current_epoch = next_iter / self.iters_per_epoch
+
+        if metric_val > self.best_metric:
+            self.best_metric = metric_val
+            self.best_iter = next_iter
+            self.num_bad_evals = 0
+            print(f"  [EarlyStopping] New best {self.metric_name}={metric_val:.4f} "
+                  f"at epoch {current_epoch:.1f} (iter {next_iter})")
+        else:
+            self.num_bad_evals += 1
+            print(f"  [EarlyStopping] No improvement {self.num_bad_evals}/{self.patience} "
+                  f"(best={self.best_metric:.4f} at iter {self.best_iter})")
+
+        if self.num_bad_evals >= self.patience:
+            self.stopped_iter = next_iter
+            self.stopped_epoch = current_epoch
+            print(f"\n  [EarlyStopping] STOP at epoch {current_epoch:.1f} (iter {next_iter}). "
+                  f"Best {self.metric_name}={self.best_metric:.4f} at iter {self.best_iter}")
+            # 학습 중단: max_iter를 현재 iter로 설정
+            self.trainer.max_iter = next_iter
+
+    def after_train(self):
+        pass
 
 
 class Detectron2Adapter(ModelAdapter):
@@ -27,6 +96,8 @@ class Detectron2Adapter(ModelAdapter):
         self.cfg = None
         self.train_dataset_name = None
         self.val_dataset_name = None
+        self.iters_per_epoch = None
+        self.early_stopping_hook = None
 
     def _import_detectron2(self):
         """Lazy import to avoid import errors when detectron2 is not installed"""
@@ -173,17 +244,47 @@ class Detectron2Adapter(ModelAdapter):
         cfg.DATASETS.TRAIN = (self.train_dataset_name,)
         cfg.DATASETS.TEST = (self.val_dataset_name,)
 
-        cfg.SOLVER.IMS_PER_BATCH = hyperparams.get("batch_size", 2)
+        batch_size = hyperparams.get("batch_size", 2)
+        cfg.SOLVER.IMS_PER_BATCH = batch_size
         cfg.SOLVER.BASE_LR = hyperparams.get("lr", 1e-4)
-        cfg.SOLVER.MAX_ITER = hyperparams.get("max_iter", 10000)
-        cfg.SOLVER.WARMUP_ITERS = hyperparams.get("warmup_iters", 200)
-        cfg.SOLVER.CHECKPOINT_PERIOD = hyperparams.get("checkpoint_period", 1000)
+
+        # 에폭→이터레이션 변환
+        from training.data_pipeline import load_coco
+        train_data = load_coco(train_ann_path)
+        n_train_images = len(train_data["images"])
+        self.iters_per_epoch = max(1, math.ceil(n_train_images / batch_size))
+
+        max_epochs = hyperparams.get("max_epochs", 300)
+        max_iter = max_epochs * self.iters_per_epoch
+        cfg.SOLVER.MAX_ITER = max_iter
+
+        warmup_epochs = hyperparams.get("warmup_epochs", 5)
+        cfg.SOLVER.WARMUP_ITERS = warmup_epochs * self.iters_per_epoch
+
+        eval_period_epochs = hyperparams.get("eval_period_epochs", 5)
+        eval_period = eval_period_epochs * self.iters_per_epoch
+        cfg.TEST.EVAL_PERIOD = eval_period
+
+        checkpoint_period_epochs = hyperparams.get("checkpoint_period_epochs", 10)
+        cfg.SOLVER.CHECKPOINT_PERIOD = checkpoint_period_epochs * self.iters_per_epoch
 
         # LR decay steps (마지막 30%, 10%)
-        max_iter = cfg.SOLVER.MAX_ITER
         cfg.SOLVER.STEPS = (int(max_iter * 0.7), int(max_iter * 0.9))
 
-        cfg.TEST.EVAL_PERIOD = hyperparams.get("eval_period", 500)
+        # Early stopping 설정 저장
+        patience = hyperparams.get("early_stopping_patience", 15)
+        es_metric = hyperparams.get("early_stopping_metric", "segm/AP")
+        self.early_stopping_hook = EarlyStoppingHook(
+            eval_period=eval_period,
+            patience=patience,
+            metric_name=es_metric,
+            iters_per_epoch=self.iters_per_epoch,
+        )
+
+        print(f"  Train images: {n_train_images}, iters/epoch: {self.iters_per_epoch}")
+        print(f"  Max epochs: {max_epochs} ({max_iter} iters)")
+        print(f"  Eval every {eval_period_epochs} epochs ({eval_period} iters)")
+        print(f"  Early stopping patience: {patience} evals ({patience * eval_period_epochs} epochs)")
 
         cfg.INPUT.MASK_FORMAT = "polygon"
         min_size = hyperparams.get("input_min_size", (480, 512, 544, 576, 608, 640))
@@ -260,9 +361,25 @@ class Detectron2Adapter(ModelAdapter):
         trainer = TrainerClass(self.cfg)
         trainer.resume_or_load(resume=False)
 
+        # Early stopping hook 등록
+        if self.early_stopping_hook is not None:
+            self.early_stopping_hook.trainer = trainer
+            trainer.register_hooks([self.early_stopping_hook])
+            # hook을 eval hook 뒤로 이동 (eval 결과를 읽어야 하므로)
+            # detectron2는 hooks[-1]이 가장 마지막에 실행됨
+            hooks = trainer._hooks
+            es_hook = hooks.pop()
+            hooks.append(es_hook)
+
+        # GPU 메모리 추적 시작
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+
+        max_epochs = self.cfg.SOLVER.MAX_ITER / self.iters_per_epoch if self.iters_per_epoch else "?"
+
         print(f"\n{'='*60}")
         print(f"  학습 시작: {self.model_info['display_name']}")
-        print(f"  MAX_ITER: {self.cfg.SOLVER.MAX_ITER}")
+        print(f"  MAX_EPOCHS: {max_epochs} ({self.cfg.SOLVER.MAX_ITER} iters)")
         print(f"  LR: {self.cfg.SOLVER.BASE_LR}")
         print(f"  BATCH: {self.cfg.SOLVER.IMS_PER_BATCH}")
         print(f"  OUTPUT: {self.cfg.OUTPUT_DIR}")
@@ -270,8 +387,33 @@ class Detectron2Adapter(ModelAdapter):
 
         trainer.train()
 
+        # GPU 메모리 측정
+        peak_memory_mb = None
+        if torch.cuda.is_available():
+            peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
+
         # metrics 수집
-        metrics = {"model": self.model_name, "status": "completed"}
+        final_iter = trainer.iter
+        final_epoch = final_iter / self.iters_per_epoch if self.iters_per_epoch else 0
+
+        metrics = {
+            "model": self.model_name,
+            "status": "completed",
+            "total_iters": final_iter,
+            "total_epochs": round(final_epoch, 1),
+            "iters_per_epoch": self.iters_per_epoch,
+            "peak_memory_mb": round(peak_memory_mb, 1) if peak_memory_mb else None,
+        }
+
+        # Early stopping 정보
+        if self.early_stopping_hook is not None:
+            es = self.early_stopping_hook
+            metrics["early_stopped"] = es.stopped_iter is not None
+            metrics["early_stop_epoch"] = round(es.stopped_epoch, 1) if es.stopped_epoch else None
+            metrics["early_stop_iter"] = es.stopped_iter
+            metrics["best_metric_value"] = round(es.best_metric, 4) if es.best_metric > -float("inf") else None
+            metrics["best_metric_iter"] = es.best_iter
+
         metrics_file = Path(self.cfg.OUTPUT_DIR) / "metrics.json"
         if metrics_file.exists():
             with open(metrics_file) as f:
