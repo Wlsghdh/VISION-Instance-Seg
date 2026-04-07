@@ -34,7 +34,7 @@ Detectron2 기본 config (Base-RCNN-FPN.yaml):
 ### 3-2. 우리 상황
 
 - **COCO pretrained 가중치로 fine-tuning** (from scratch 아님)
-- **데이터**: 5개 카테고리, baseline 26~138장 (최대 genai_125 ~260장/카테고리)
+- **데이터**: 6개 카테고리 통합(Unified, 14클래스), baseline 421장 (최대 genai_125 ~2,171장)
 - **GPU**: NVIDIA A100 80GB x 1 (서버 정책: 1인 1GPU)
 
 ### 3-3. Batch Size 선택: 12
@@ -144,7 +144,7 @@ batch_size=12 → 0.015 / 10 = 0.0015
 
 - 50 에폭마다 모델 가중치 저장
 - 체크포인트 1개 ≈ 548MB
-- 10 에폭마다 저장하면 디스크 소비가 큼 (180회 학습 × 여러 체크포인트)
+- 10 에폭마다 저장하면 디스크 소비가 큼 (36회 학습 × 여러 체크포인트)
 - 50 에폭이면 학습 중단/에러 시 복구 가능하면서도 디스크 절약
 - best model은 early stopping이 별도 관리
 
@@ -243,7 +243,7 @@ seed가 영향을 주는 요소:
 
 ## 13. 카테고리 & 데이터 조건
 
-### 13-1. 카테고리 (5개)
+### 13-1. 카테고리 (6개, 14클래스 통합)
 
 | 카테고리 | 클래스 | 원본 train | GenAI/클래스 |
 |----------|--------|:---------:|:----------:|
@@ -252,6 +252,9 @@ seed가 영향을 주는 요소:
 | Casting | Inclusoes, Rechupe | 54장 | ~120장 |
 | Console | Collision, Dirty, Gap, Scratch | 95장 | ~125장 |
 | Cylinder | Chip, PistonMiss, Porosity, RCS | 138장 | ~128장 |
+| Wood | impurities, pits | 51장 | ~125장 |
+
+6개 카테고리는 `--category Unified`로 14개 결함 클래스를 한 모델로 통합 학습한다.
 
 ### 13-2. 데이터 조건 (6개)
 
@@ -271,13 +274,13 @@ seed가 영향을 주는 요소:
 ## 14. 총 학습 횟수
 
 ```
-5 카테고리 × 6 조건 × 2 모델 × 3 반복 = 180회
+1 (Unified, 14클래스 통합) × 6 조건 × 2 모델 × 3 반복 = 36회
 ```
 
 | 담당 | 모델 | 학습 횟수 |
 |------|------|:--------:|
-| 양진우 | Mask R-CNN | 90회 |
-| 임대윤 | Cascade Mask R-CNN | 90회 |
+| 양진우 | Mask R-CNN | 18회 |
+| 임대윤 | Cascade Mask R-CNN | 18회 |
 
 ---
 

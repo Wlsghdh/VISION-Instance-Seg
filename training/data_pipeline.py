@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .config import (
-    PROJECT_ROOT, CATEGORIES, EXPERIMENTS,
+    PROJECT_ROOT, CATEGORIES, EXPERIMENTS, MERGED_DIR,
     get_category_info, get_experiment_info, get_merged_dir,
 )
 
@@ -70,6 +70,23 @@ def filter_coco_by_category(data: dict, keep_category_id: int,
         "annotations": filtered_anns,
         "categories": new_cats,
     }
+
+
+# ============================================================
+# 통합 카테고리 유틸리티
+# ============================================================
+def _remap_category_ids(anns: list, local_to_global: Dict[int, int]) -> list:
+    """annotation의 category_id를 로컬→글로벌로 변환"""
+    for ann in anns:
+        ann["category_id"] = local_to_global[ann["category_id"]]
+    return anns
+
+
+def _prefix_filenames(imgs: list, prefix: str):
+    """이미지 file_name에 카테고리명 접두사 추가 (충돌 방지). 원본은 _original_filename에 보존"""
+    for img in imgs:
+        img["_original_filename"] = img["file_name"]
+        img["file_name"] = f"{prefix}_{img['file_name']}"
 
 
 # ============================================================
@@ -160,7 +177,7 @@ def _merge_sources(sources: list, out_dir: Path, categories: list) -> Tuple[int,
         img_id_map = {}
 
         for img in imgs:
-            src = images_dir / img["file_name"]
+            src = images_dir / img.get("_original_filename", img["file_name"])
             dst = out_images_dir / img["file_name"]
 
             if dst.exists():
@@ -209,6 +226,9 @@ def prepare_dataset(experiment: str, condition: str, category: str,
 
     Returns: 병합된 데이터셋 디렉토리 경로
     """
+    if category == "Unified":
+        return prepare_unified_dataset(experiment, condition, seed, force)
+
     cat_info = get_category_info(category)
     exp_info = get_experiment_info(experiment)
 
@@ -280,6 +300,138 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     n_imgs, n_anns = _merge_sources(sources, out_dir, train_categories)
     print(f"  병합 완료: {n_imgs}장, {n_anns}개 annotations → {out_dir}")
     return out_dir
+
+
+def prepare_unified_dataset(experiment: str, condition: str,
+                            seed: int = 42, force: bool = False) -> Path:
+    """6개 카테고리를 하나의 14클래스 통합 데이터셋으로 병합"""
+    unified_info = get_category_info("Unified")
+    exp_info = get_experiment_info(experiment)
+
+    if condition not in exp_info["conditions"]:
+        raise ValueError(
+            f"Unknown condition '{condition}' for {experiment}. "
+            f"Choose from {list(exp_info['conditions'].keys())}"
+        )
+
+    params = exp_info["conditions"][condition]
+    out_dir = get_merged_dir(experiment, condition, "Unified")
+
+    if not force and (out_dir / "annotations.json").exists():
+        data = load_coco(out_dir / "annotations.json")
+        print(f"  [SKIP] 이미 존재: {out_dir} ({len(data['images'])} images)")
+        return out_dir
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if (out_dir / "images").exists():
+        shutil.rmtree(out_dir / "images")
+    if (out_dir / "annotations.json").exists():
+        (out_dir / "annotations.json").unlink()
+
+    sources = []
+    global_id_offset = unified_info["global_id_offset"]
+    n_original = params["n_original"]
+    n_genai_per_class = params["n_genai_per_class"]
+    n_traditional = params["n_traditional"]
+
+    for subcat_name in unified_info["subcategories"]:
+        subcat_info = get_category_info(subcat_name)
+        offset = global_id_offset[subcat_name]
+        local_to_global = {i: offset + i for i in range(subcat_info["num_classes"])}
+
+        print(f"\n  [{subcat_name}] offset={offset}, classes={subcat_info['classes']}")
+
+        # 원본 데이터
+        if subcat_info["train_ann"] and subcat_info["train_ann"].exists():
+            orig_data = load_coco(subcat_info["train_ann"])
+            if subcat_name == "Cable":
+                orig_data = filter_coco_by_category(orig_data, 1, {1: 0})
+            orig_imgs, orig_anns = _sample_images(
+                orig_data, subcat_info["train_images"], n_original, seed
+            )
+            _remap_category_ids(orig_anns, local_to_global)
+            _prefix_filenames(orig_imgs, subcat_name)
+            print(f"    원본: {len(orig_imgs)}장")
+            sources.append((subcat_info["train_images"], orig_imgs, orig_anns))
+        else:
+            print(f"    [WARN] 원본 없음: {subcat_info['train_ann']}")
+
+        # GenAI 데이터
+        if n_genai_per_class > 0 and subcat_info["genai_ann"] and subcat_info["genai_ann"].exists():
+            genai_data = load_coco(subcat_info["genai_ann"])
+            genai_imgs, genai_anns = _sample_images_per_class(
+                genai_data, subcat_info["genai_images"], n_genai_per_class, seed + 1
+            )
+            _remap_category_ids(genai_anns, local_to_global)
+            _prefix_filenames(genai_imgs, subcat_name)
+            print(f"    GenAI: {len(genai_imgs)}장 (클래스당 {n_genai_per_class}장 목표)")
+            sources.append((subcat_info["genai_images"], genai_imgs, genai_anns))
+        elif n_genai_per_class > 0:
+            print(f"    [WARN] GenAI 없음: {subcat_info['genai_ann']}")
+
+        # 전통 증강 데이터
+        if n_traditional > 0 and subcat_info["trad_ann"] and subcat_info["trad_ann"].exists():
+            trad_data = load_coco(subcat_info["trad_ann"])
+            trad_imgs, trad_anns = _sample_images(
+                trad_data, subcat_info["trad_images"], n_traditional, seed + 2
+            )
+            _remap_category_ids(trad_anns, local_to_global)
+            _prefix_filenames(trad_imgs, subcat_name)
+            print(f"    전통증강: {len(trad_imgs)}장")
+            sources.append((subcat_info["trad_images"], trad_imgs, trad_anns))
+        elif n_traditional > 0:
+            print(f"    [WARN] 전통증강 없음: {subcat_info['trad_ann']}")
+
+    # 통합 병합
+    n_imgs, n_anns = _merge_sources(sources, out_dir, unified_info["coco_categories"])
+    print(f"\n  통합 병합 완료: {n_imgs}장, {n_anns}개 annotations (14 classes) → {out_dir}")
+    return out_dir
+
+
+def prepare_unified_val_dataset() -> Tuple[Path, Path]:
+    """6개 카테고리의 val 데이터를 14클래스 통합 val 데이터셋으로 병합"""
+    unified_info = get_category_info("Unified")
+    val_dir = MERGED_DIR / "_unified_val"
+    val_ann_path = val_dir / "annotations.json"
+    val_images_dir = val_dir / "images"
+
+    if val_ann_path.exists():
+        data = load_coco(val_ann_path)
+        print(f"  [SKIP] 통합 val 이미 존재: {val_dir} ({len(data['images'])} images)")
+        return val_images_dir, val_ann_path
+
+    sources = []
+    global_id_offset = unified_info["global_id_offset"]
+
+    for subcat_name in unified_info["subcategories"]:
+        subcat_info = get_category_info(subcat_name)
+        offset = global_id_offset[subcat_name]
+        local_to_global = {i: offset + i for i in range(subcat_info["num_classes"])}
+
+        val_ann = subcat_info["val_ann"]
+        val_images = subcat_info["val_images"]
+        if not val_ann.exists():
+            print(f"  [WARN] Val 없음: {subcat_name} ({val_ann})")
+            continue
+
+        data = load_coco(val_ann)
+
+        # Cable: thunderbolt(id=1)만 필터, 로컬 0으로 리매핑
+        if subcat_info["val_filter_category_id"] is not None:
+            data = filter_coco_by_category(
+                data,
+                subcat_info["val_filter_category_id"],
+                subcat_info["val_category_remap"],
+            )
+
+        _remap_category_ids(data["annotations"], local_to_global)
+        _prefix_filenames(data["images"], subcat_name)
+        print(f"  Val [{subcat_name}]: {len(data['images'])}장")
+        sources.append((val_images, data["images"], data["annotations"]))
+
+    n_imgs, n_anns = _merge_sources(sources, val_dir, unified_info["coco_categories"])
+    print(f"  통합 val 완료: {n_imgs}장, {n_anns}개 annotations → {val_dir}")
+    return val_images_dir, val_ann_path
 
 
 # ============================================================
@@ -440,6 +592,9 @@ def prepare_val_dataset(category: str) -> Tuple[Path, Path]:
     Val 데이터셋 준비 (필요 시 필터링 후 임시 저장).
     Returns: (val_images_dir, val_ann_path)
     """
+    if category == "Unified":
+        return prepare_unified_val_dataset()
+
     cat_info = get_category_info(category)
     val_ann = cat_info["val_ann"]
     val_images = cat_info["val_images"]
@@ -481,7 +636,7 @@ def main():
 
     args = parser.parse_args()
 
-    categories = list(CATEGORIES.keys()) if args.category == 'all' else [args.category]
+    categories = [c for c in CATEGORIES if c != "Unified"] if args.category == 'all' else [args.category]
     exp_info = get_experiment_info(args.experiment)
     conditions = list(exp_info["conditions"].keys()) if args.condition == 'all' else [args.condition]
 
