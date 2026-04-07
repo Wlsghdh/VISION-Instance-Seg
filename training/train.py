@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from .config import (
-    CATEGORIES, MODELS, EXPERIMENTS, DEFAULT_HYPERPARAMS,
+    CATEGORIES, MODELS, EXPERIMENTS, DEFAULT_HYPERPARAMS, MULTI_SEEDS,
     EVAL_DIR,
     get_category_info, get_model_info, get_experiment_info, get_output_dir,
 )
@@ -63,10 +63,14 @@ def create_adapter(model_name: str, category: str):
 
 def run_single(category: str, experiment: str, condition: str,
                model_name: str, hyperparams: dict,
-               eval_only: bool = False) -> Dict:
-    """단일 (카테고리, 실험, 조건, 모델) 조합 실행"""
-    output_dir = get_output_dir(experiment, condition, category, model_name)
-    model_info = get_model_info(model_name)
+               eval_only: bool = False,
+               base_model_name: str = None,
+               seed_subdir: int = None) -> Dict:
+    """단일 (카테고리, 실험, 조건, 모델) 조합 실행
+    seed_subdir이 주어지면 출력 경로에 seed 하위 폴더 생성 (다중 seed 학습용)"""
+    base_model = base_model_name or model_name
+    output_dir = get_output_dir(experiment, condition, category, model_name, seed=seed_subdir)
+    model_info = get_model_info(base_model)
 
     print(f"\n{'='*70}")
     print(f"  [{model_info['display_name']}] {category} / {experiment} / {condition}")
@@ -82,7 +86,7 @@ def run_single(category: str, experiment: str, condition: str,
     val_images_dir, val_ann_path = prepare_val_dataset(category)
 
     # 3. Adapter 생성 + 설정
-    adapter = create_adapter(model_name, category)
+    adapter = create_adapter(base_model, category)
     adapter.setup(
         train_images_dir=train_images_dir,
         train_ann_path=train_ann_path,
@@ -97,6 +101,7 @@ def run_single(category: str, experiment: str, condition: str,
         "experiment": experiment,
         "condition": condition,
         "model": model_name,
+        "seed": hyperparams.get("seed", 42),
         "output_dir": str(output_dir),
     }
 
@@ -142,17 +147,17 @@ def save_results(all_results: List[Dict]):
         with open(results_file) as f:
             existing = json.load(f)
 
+    def make_key(r):
+        seed_part = f"_seed{r.get('seed', 42)}" if r.get('seed') is not None else ""
+        return f"{r['category']}_{r['experiment']}_{r['condition']}_{r['model']}{seed_part}"
+
     # 새 결과 추가 (중복 시 덮어쓰기)
-    existing_keys = set()
-    for r in existing:
-        key = f"{r['category']}_{r['experiment']}_{r['condition']}_{r['model']}"
-        existing_keys.add(key)
+    existing_keys = {make_key(r) for r in existing}
 
     for r in all_results:
-        key = f"{r['category']}_{r['experiment']}_{r['condition']}_{r['model']}"
+        key = make_key(r)
         if key in existing_keys:
-            existing = [e for e in existing
-                        if f"{e['category']}_{e['experiment']}_{e['condition']}_{e['model']}" != key]
+            existing = [e for e in existing if make_key(e) != key]
         existing.append(r)
 
     with open(results_file, 'w') as f:
@@ -186,26 +191,30 @@ def main():
     parser.add_argument('--eval-period-epochs', type=int, default=None)
     parser.add_argument('--patience', type=int, default=None,
                         help='Early stopping patience (eval 횟수)')
+    parser.add_argument('--tag', type=str, default=None,
+                        help='결과 저장 경로에 태그 추가 (예: bs4_lr5e-4)')
+    parser.add_argument('--multi-seed', action='store_true',
+                        help='다중 시드 학습 (config.MULTI_SEEDS의 시드 목록으로 반복 실행)')
 
     args = parser.parse_args()
 
-    # 하이퍼파라미터 구성
-    hyperparams = dict(DEFAULT_HYPERPARAMS)
+    # CLI 오버라이드 수집
+    cli_overrides = {}
     if args.max_epochs is not None:
-        hyperparams["max_epochs"] = args.max_epochs
+        cli_overrides["max_epochs"] = args.max_epochs
     if args.lr is not None:
-        hyperparams["lr"] = args.lr
+        cli_overrides["lr"] = args.lr
     if args.batch_size is not None:
-        hyperparams["batch_size"] = args.batch_size
+        cli_overrides["batch_size"] = args.batch_size
     if args.seed is not None:
-        hyperparams["seed"] = args.seed
+        cli_overrides["seed"] = args.seed
     if args.eval_period_epochs is not None:
-        hyperparams["eval_period_epochs"] = args.eval_period_epochs
+        cli_overrides["eval_period_epochs"] = args.eval_period_epochs
     if args.patience is not None:
-        hyperparams["early_stopping_patience"] = args.patience
+        cli_overrides["early_stopping_patience"] = args.patience
 
     # 범위 결정
-    categories = list(CATEGORIES.keys()) if args.category == 'all' else [args.category]
+    categories = [c for c in CATEGORIES if c != "Unified"] if args.category == 'all' else [args.category]
     exp_info = get_experiment_info(args.experiment)
     conditions = list(exp_info["conditions"].keys()) if args.condition == 'all' else [args.condition]
 
@@ -214,13 +223,22 @@ def main():
     else:
         models = [args.model]
 
+    # 다중 시드 vs 단일 시드 결정
+    if args.multi_seed:
+        seeds = list(MULTI_SEEDS)
+        print(f"\n  [Multi-Seed] 시드 {seeds}로 각 조합을 {len(seeds)}회 반복 실행")
+    else:
+        seeds = [None]  # 단일 실행 (기본 seed 또는 --seed로 지정된 값 사용)
+
     # 실행 계획 출력
-    total = len(categories) * len(conditions) * len(models)
+    total = len(categories) * len(conditions) * len(models) * len(seeds)
     print(f"\n{'='*70}")
     print(f"  실험: {args.experiment}")
     print(f"  카테고리: {categories}")
     print(f"  조건: {conditions}")
     print(f"  모델: {models}")
+    if args.multi_seed:
+        print(f"  시드: {seeds}")
     print(f"  총 실행 수: {total}")
     print(f"  {'평가만' if args.eval_only else '학습 + 평가'}")
     print(f"{'='*70}")
@@ -232,27 +250,41 @@ def main():
     for cat in categories:
         for cond in conditions:
             for model in models:
-                completed += 1
-                print(f"\n[{completed}/{total}]")
-                try:
-                    result = run_single(
-                        category=cat,
-                        experiment=args.experiment,
-                        condition=cond,
-                        model_name=model,
-                        hyperparams=hyperparams,
-                        eval_only=args.eval_only,
-                    )
-                    all_results.append(result)
-                except Exception as e:
-                    print(f"\n  [ERROR] {cat}/{cond}/{model}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    all_results.append({
-                        "category": cat, "experiment": args.experiment,
-                        "condition": cond, "model": model,
-                        "error": str(e),
-                    })
+                for seed in seeds:
+                    completed += 1
+                    print(f"\n[{completed}/{total}]")
+                    # 하이퍼파라미터: DEFAULT → 모델별 설정 → CLI 오버라이드
+                    hyperparams = dict(DEFAULT_HYPERPARAMS)
+                    model_hp = get_model_info(model).get("hyperparams", {})
+                    hyperparams.update(model_hp)
+                    hyperparams.update(cli_overrides)
+                    # 다중 시드 모드면 현재 seed로 덮어쓰기
+                    if seed is not None:
+                        hyperparams["seed"] = seed
+                    # tag가 있으면 모델명에 붙여서 결과 경로 분리
+                    effective_model = f"{model}_{args.tag}" if args.tag else model
+                    try:
+                        result = run_single(
+                            category=cat,
+                            experiment=args.experiment,
+                            condition=cond,
+                            model_name=effective_model,
+                            hyperparams=hyperparams,
+                            eval_only=args.eval_only,
+                            base_model_name=model if args.tag else None,
+                            seed_subdir=seed,  # 다중 시드일 때만 seed 하위 폴더 생성
+                        )
+                        all_results.append(result)
+                    except Exception as e:
+                        print(f"\n  [ERROR] {cat}/{cond}/{model}/seed{seed}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        all_results.append({
+                            "category": cat, "experiment": args.experiment,
+                            "condition": cond, "model": model,
+                            "seed": hyperparams.get("seed", 42),
+                            "error": str(e),
+                        })
 
     # 결과 저장
     save_results(all_results)

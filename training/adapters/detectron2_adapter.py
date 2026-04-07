@@ -18,7 +18,16 @@ import torch
 from .base import ModelAdapter
 
 
-class EarlyStoppingHook:
+from detectron2.engine.train_loop import HookBase
+
+
+class EarlyStopException(BaseException):
+    """Early stopping 발동 시 학습 루프를 중단하기 위한 예외.
+    BaseException을 상속하여 detectron2의 except Exception에 잡히지 않도록 함."""
+    pass
+
+
+class EarlyStoppingHook(HookBase):
     """
     Detectron2용 Early Stopping Hook.
     eval_period마다 metric을 체크하여 patience 횟수 동안 개선 없으면 학습 중단.
@@ -77,8 +86,8 @@ class EarlyStoppingHook:
             self.stopped_epoch = current_epoch
             print(f"\n  [EarlyStopping] STOP at epoch {current_epoch:.1f} (iter {next_iter}). "
                   f"Best {self.metric_name}={self.best_metric:.4f} at iter {self.best_iter}")
-            # 학습 중단: max_iter를 현재 iter로 설정
-            self.trainer.max_iter = next_iter
+            # 학습 강제 중단
+            raise EarlyStopException(f"Early stopping at epoch {current_epoch:.1f}")
 
     def after_train(self):
         pass
@@ -372,9 +381,55 @@ class Detectron2Adapter(ModelAdapter):
             es_hook = hooks.pop()
             hooks.append(es_hook)
 
+        # 학습 전 GPU 상태 기록
+        pre_train_gpu = {}
+        if torch.cuda.is_available():
+            device_id = torch.cuda.current_device()
+            pre_train_gpu["device_id"] = device_id
+            pre_train_gpu["memory_used_mb"] = round(torch.cuda.memory_reserved() / (1024 ** 2), 1)
+            pre_train_gpu["lr"] = self.cfg.SOLVER.BASE_LR
+            pre_train_gpu["batch_size"] = self.cfg.SOLVER.IMS_PER_BATCH
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits",
+                     f"--id={device_id}"],
+                    capture_output=True, text=True, timeout=5
+                )
+                used, total = result.stdout.strip().split(", ")
+                pre_train_gpu["gpu_memory_used_mb"] = int(used)
+                pre_train_gpu["gpu_memory_total_mb"] = int(total)
+            except Exception:
+                pass
+
         # GPU 메모리 추적 시작
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
+
+        # GPU 활용률 피크 추적 (백그라운드 스레드)
+        import threading
+        gpu_util_peak = [0]
+        gpu_util_stop = threading.Event()
+
+        def _monitor_gpu_util():
+            import subprocess
+            device_id = torch.cuda.current_device() if torch.cuda.is_available() else 0
+            while not gpu_util_stop.is_set():
+                try:
+                    result = subprocess.run(
+                        ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits",
+                         f"--id={device_id}"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    val = int(result.stdout.strip())
+                    if val > gpu_util_peak[0]:
+                        gpu_util_peak[0] = val
+                except Exception:
+                    pass
+                gpu_util_stop.wait(60)  # 60초마다 측정
+
+        gpu_monitor = threading.Thread(target=_monitor_gpu_util, daemon=True)
+        gpu_monitor.start()
 
         max_epochs = self.cfg.SOLVER.MAX_ITER / self.iters_per_epoch if self.iters_per_epoch else "?"
 
@@ -386,12 +441,21 @@ class Detectron2Adapter(ModelAdapter):
         print(f"  OUTPUT: {self.cfg.OUTPUT_DIR}")
         print(f"{'='*60}\n")
 
-        trainer.train()
+        try:
+            trainer.train()
+        except EarlyStopException as e:
+            print(f"\n  {e}")
+
+        # GPU 모니터링 중지
+        gpu_util_stop.set()
+        gpu_monitor.join(timeout=5)
 
         # GPU 메모리 측정
         peak_memory_mb = None
+        peak_memory_reserved_mb = None
         if torch.cuda.is_available():
             peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
+            peak_memory_reserved_mb = torch.cuda.max_memory_reserved() / (1024 ** 2)
 
         # metrics 수집
         final_iter = trainer.iter
@@ -404,6 +468,9 @@ class Detectron2Adapter(ModelAdapter):
             "total_epochs": round(final_epoch, 1),
             "iters_per_epoch": self.iters_per_epoch,
             "peak_memory_mb": round(peak_memory_mb, 1) if peak_memory_mb else None,
+            "peak_memory_reserved_mb": round(peak_memory_reserved_mb, 1) if peak_memory_reserved_mb else None,
+            "gpu_utilization_peak_pct": gpu_util_peak[0],
+            "pre_train_gpu": pre_train_gpu,
         }
 
         # Early stopping 정보

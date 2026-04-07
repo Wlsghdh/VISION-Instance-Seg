@@ -8,9 +8,10 @@ from pathlib import Path
 # ============================================================
 # 경로 설정
 # ============================================================
-PROJECT_ROOT = Path('/home/jjh0709/gitrepo/VISION-Instance-Seg')
-DATA_DIR = PROJECT_ROOT / 'data'
-DATA_AUG_DIR = PROJECT_ROOT / 'data_augmented'
+PROJECT_ROOT = Path(__file__).resolve().parent.parent  # training/ 상위 = 프로젝트 루트
+DATA_ROOT = Path('/home/jjh0709/gitrepo/VISION-Instance-Seg')  # 데이터 원본 경로
+DATA_DIR = DATA_ROOT / 'data'
+DATA_AUG_DIR = DATA_ROOT / 'data_augmented'
 RESULTS_DIR = PROJECT_ROOT / 'results'
 MERGED_DIR = RESULTS_DIR / 'merged_datasets'
 TRAINING_DIR = RESULTS_DIR / 'training'
@@ -77,6 +78,43 @@ CATEGORIES = {
     "Wood": _cat("Wood", ["impurities", "pits"],
                  train_images_subdir="", train_ann_name="_annotations.coco.json"),
 }
+
+# ============================================================
+# 통합 카테고리 (6개 카테고리 × 14개 결함 클래스)
+# ============================================================
+UNIFIED_SUBCATEGORIES = ["Cable", "Screw", "Casting", "Console", "Cylinder", "Wood"]
+
+
+def _build_unified_category():
+    """6개 카테고리의 클래스를 합쳐 통합 카테고리 생성"""
+    all_classes = []
+    global_id_offset = {}
+    for subcat in UNIFIED_SUBCATEGORIES:
+        global_id_offset[subcat] = len(all_classes)
+        all_classes.extend(CATEGORIES[subcat]["classes"])
+    return {
+        "classes": all_classes,
+        "coco_categories": [
+            {"id": i, "name": c, "supercategory": "defect"}
+            for i, c in enumerate(all_classes)
+        ],
+        "num_classes": len(all_classes),
+        "subcategories": UNIFIED_SUBCATEGORIES,
+        "global_id_offset": global_id_offset,
+        "train_images": None,
+        "train_ann": None,
+        "val_images": None,
+        "val_ann": None,
+        "genai_images": None,
+        "genai_ann": None,
+        "trad_images": None,
+        "trad_ann": None,
+        "val_filter_category_id": None,
+        "val_category_remap": None,
+    }
+
+
+CATEGORIES["Unified"] = _build_unified_category()
 
 # ============================================================
 # 모델 정의
@@ -185,12 +223,19 @@ DEFAULT_HYPERPARAMS = {
     "lr_decay_steps": (0.7, 0.9),          # lr → lr/10 → lr/100
 }
 
+# 다중 시드 학습 시 사용할 시드 목록 (--multi-seed 옵션 사용 시)
+MULTI_SEEDS = [42, 43, 44]
+
 # ============================================================
 # 헬퍼 함수
 # ============================================================
-def get_output_dir(experiment: str, condition: str, category: str, model: str) -> Path:
-    """학습 결과 출력 디렉토리"""
-    return TRAINING_DIR / experiment / condition / category / model
+def get_output_dir(experiment: str, condition: str, category: str, model: str,
+                   seed: int = None) -> Path:
+    """학습 결과 출력 디렉토리. seed가 주어지면 seed별 하위 디렉토리 생성"""
+    base = TRAINING_DIR / experiment / condition / category / model
+    if seed is not None:
+        return base / f"seed{seed}"
+    return base
 
 
 def get_merged_dir(experiment: str, condition: str, category: str) -> Path:
