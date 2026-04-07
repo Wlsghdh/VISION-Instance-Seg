@@ -268,8 +268,9 @@ class Detectron2Adapter(ModelAdapter):
         checkpoint_period_epochs = hyperparams.get("checkpoint_period_epochs", 10)
         cfg.SOLVER.CHECKPOINT_PERIOD = checkpoint_period_epochs * self.iters_per_epoch
 
-        # LR decay steps (마지막 30%, 10%)
-        cfg.SOLVER.STEPS = (int(max_iter * 0.7), int(max_iter * 0.9))
+        # LR decay steps (config의 lr_decay_steps 비율 적용)
+        decay_steps = hyperparams.get("lr_decay_steps", (0.7, 0.9))
+        cfg.SOLVER.STEPS = tuple(int(max_iter * s) for s in decay_steps)
 
         # Early stopping 설정 저장
         patience = hyperparams.get("early_stopping_patience", 15)

@@ -167,19 +167,22 @@ EXPERIMENTS = {
 # 기본 하이퍼파라미터
 # ============================================================
 DEFAULT_HYPERPARAMS = {
+    # 실험 1 통일 하이퍼파라미터 (exp1_config.md 기준)
     # 에폭 기반 학습 (early stopping이 자동 종료)
-    "max_epochs": 300,
-    "lr": 1e-4,
-    "batch_size": 2,
-    "seed": 42,
-    "warmup_epochs": 5,
-    "eval_period_epochs": 5,       # N 에폭마다 평가
-    "checkpoint_period_epochs": 10,
-    "input_min_size": (480, 512, 544, 576, 608, 640),
-    "input_max_size": 800,
+    "max_epochs": 1000,                    # early stopping에 맡기고 넉넉히
+    "lr": 0.0015,                          # Linear Scaling Rule(0.02*12/16=0.015) + fine-tuning 1/10 보정
+    "batch_size": 12,                      # A100 80GB GPU 활용률 개선 + gradient 안정
+    "seed": 42,                            # 3회 반복 시 42, 43, 44 사용
+    "warmup_epochs": 5,                    # 학습 초반 lr 점진 상승
+    "eval_period_epochs": 5,               # 5 에폭마다 평가
+    "checkpoint_period_epochs": 50,        # 디스크 절약 (체크포인트 1개 ≈ 548MB)
+    "input_min_size": (640, 672, 704, 736, 768, 800),  # detectron2 기본값
+    "input_max_size": 1333,                # 고해상도 유지, 작은 결함 보존
     # Early stopping
-    "early_stopping_patience": 15,  # eval_period_epochs 단위 (15 * 5 = 75 에폭 동안 개선 없으면 중단)
-    "early_stopping_metric": "segm/AP",  # 모니터링 지표
+    "early_stopping_patience": 15,         # 15 * 5 = 75 에폭 동안 개선 없으면 중단
+    "early_stopping_metric": "segm/AP",    # instance segmentation mAP
+    # LR Decay (Step LR, 학습 길이의 70%/90% 지점)
+    "lr_decay_steps": (0.7, 0.9),          # lr → lr/10 → lr/100
 }
 
 # ============================================================
