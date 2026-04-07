@@ -64,8 +64,9 @@ def create_adapter(model_name: str, category: str):
 def run_single(category: str, experiment: str, condition: str,
                model_name: str, hyperparams: dict,
                eval_only: bool = False) -> Dict:
-    """단일 (카테고리, 실험, 조건, 모델) 조합 실행"""
-    output_dir = get_output_dir(experiment, condition, category, model_name)
+    """단일 (카테고리, 실험, 조건, 모델, seed) 조합 실행"""
+    seed = hyperparams.get("seed", 42)
+    output_dir = get_output_dir(experiment, condition, category, model_name, seed=seed)
     model_info = get_model_info(model_name)
 
     print(f"\n{'='*70}")
@@ -142,17 +143,16 @@ def save_results(all_results: List[Dict]):
         with open(results_file) as f:
             existing = json.load(f)
 
-    # 새 결과 추가 (중복 시 덮어쓰기)
-    existing_keys = set()
-    for r in existing:
-        key = f"{r['category']}_{r['experiment']}_{r['condition']}_{r['model']}"
-        existing_keys.add(key)
+    # 새 결과 추가 (중복 시 덮어쓰기) - seed 포함 키로 구분
+    def _key(r):
+        return f"{r['category']}_{r['experiment']}_{r['condition']}_{r['model']}_seed{r.get('seed', 'NA')}"
+
+    existing_keys = {_key(r) for r in existing}
 
     for r in all_results:
-        key = f"{r['category']}_{r['experiment']}_{r['condition']}_{r['model']}"
-        if key in existing_keys:
-            existing = [e for e in existing
-                        if f"{e['category']}_{e['experiment']}_{e['condition']}_{e['model']}" != key]
+        k = _key(r)
+        if k in existing_keys:
+            existing = [e for e in existing if _key(e) != k]
         existing.append(r)
 
     with open(results_file, 'w') as f:
@@ -182,7 +182,11 @@ def main():
     parser.add_argument('--max-epochs', type=int, default=None)
     parser.add_argument('--lr', type=float, default=None)
     parser.add_argument('--batch-size', type=int, default=None)
-    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--seed', type=int, default=None,
+                        help='단일 시드 (단일 실행 시). --seeds와 함께 쓰지 말 것')
+    parser.add_argument('--seeds', type=int, nargs='+', default=None,
+                        help='다중 시드 반복 실행 (예: --seeds 42 43 44). '
+                             '결과는 {output}/seed_{N}/ 하위에 저장')
     parser.add_argument('--eval-period-epochs', type=int, default=None)
     parser.add_argument('--patience', type=int, default=None,
                         help='Early stopping patience (eval 횟수)')
@@ -214,13 +218,25 @@ def main():
     else:
         models = [args.model]
 
+    # 시드 목록 결정 (우선순위):
+    #   1) --seeds 지정 → 해당 목록
+    #   2) --seed 지정  → 단일 시드
+    #   3) 아무것도 없음 → DEFAULT_HYPERPARAMS["seeds"] (기본 다중 시드, 예: [42,43,44])
+    if args.seeds is not None:
+        seeds = args.seeds
+    elif args.seed is not None:
+        seeds = [args.seed]
+    else:
+        seeds = list(DEFAULT_HYPERPARAMS.get("seeds", [DEFAULT_HYPERPARAMS["seed"]]))
+
     # 실행 계획 출력
-    total = len(categories) * len(conditions) * len(models)
+    total = len(categories) * len(conditions) * len(models) * len(seeds)
     print(f"\n{'='*70}")
     print(f"  실험: {args.experiment}")
     print(f"  카테고리: {categories}")
     print(f"  조건: {conditions}")
     print(f"  모델: {models}")
+    print(f"  시드: {seeds}")
     print(f"  총 실행 수: {total}")
     print(f"  {'평가만' if args.eval_only else '학습 + 평가'}")
     print(f"{'='*70}")
@@ -232,27 +248,32 @@ def main():
     for cat in categories:
         for cond in conditions:
             for model in models:
-                completed += 1
-                print(f"\n[{completed}/{total}]")
-                try:
-                    result = run_single(
-                        category=cat,
-                        experiment=args.experiment,
-                        condition=cond,
-                        model_name=model,
-                        hyperparams=hyperparams,
-                        eval_only=args.eval_only,
-                    )
-                    all_results.append(result)
-                except Exception as e:
-                    print(f"\n  [ERROR] {cat}/{cond}/{model}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    all_results.append({
-                        "category": cat, "experiment": args.experiment,
-                        "condition": cond, "model": model,
-                        "error": str(e),
-                    })
+                for seed in seeds:
+                    completed += 1
+                    print(f"\n[{completed}/{total}] seed={seed}")
+                    # 시드별 hyperparams 사본 생성 (seed만 교체)
+                    hp_run = dict(hyperparams)
+                    hp_run["seed"] = seed
+                    try:
+                        result = run_single(
+                            category=cat,
+                            experiment=args.experiment,
+                            condition=cond,
+                            model_name=model,
+                            hyperparams=hp_run,
+                            eval_only=args.eval_only,
+                        )
+                        result["seed"] = seed
+                        all_results.append(result)
+                    except Exception as e:
+                        print(f"\n  [ERROR] {cat}/{cond}/{model}/seed_{seed}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        all_results.append({
+                            "category": cat, "experiment": args.experiment,
+                            "condition": cond, "model": model, "seed": seed,
+                            "error": str(e),
+                        })
 
     # 결과 저장
     save_results(all_results)
@@ -264,7 +285,8 @@ def main():
 
     for r in all_results:
         status = "OK" if "error" not in r else "FAIL"
-        parts = [f"[{status}] {r['category']}/{r['condition']}/{r['model']}"]
+        seed_str = f"/seed_{r.get('seed')}" if r.get('seed') is not None else ""
+        parts = [f"[{status}] {r['category']}/{r['condition']}/{r['model']}{seed_str}"]
         if "eval" in r:
             segm_ap = r["eval"].get("segm_AP", r["eval"].get("coco/segm_mAP", "N/A"))
             parts.append(f"segm_AP={segm_ap}")

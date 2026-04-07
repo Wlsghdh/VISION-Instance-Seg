@@ -15,10 +15,17 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from detectron2.engine import HookBase
+
 from .base import ModelAdapter
 
 
-class EarlyStoppingHook:
+class EarlyStopException(Exception):
+    """EarlyStoppingHook이 detectron2 학습 루프를 즉시 중단시키기 위해 던지는 예외."""
+    pass
+
+
+class EarlyStoppingHook(HookBase):
     """
     Detectron2용 Early Stopping Hook.
     eval_period마다 metric을 체크하여 patience 횟수 동안 개선 없으면 학습 중단.
@@ -26,6 +33,7 @@ class EarlyStoppingHook:
 
     def __init__(self, eval_period: int, patience: int, metric_name: str = "segm/AP",
                  iters_per_epoch: int = 1):
+        super().__init__()
         self.eval_period = eval_period
         self.patience = patience
         self.metric_name = metric_name
@@ -77,8 +85,12 @@ class EarlyStoppingHook:
             self.stopped_epoch = current_epoch
             print(f"\n  [EarlyStopping] STOP at epoch {current_epoch:.1f} (iter {next_iter}). "
                   f"Best {self.metric_name}={self.best_metric:.4f} at iter {self.best_iter}")
-            # 학습 중단: max_iter를 현재 iter로 설정
-            self.trainer.max_iter = next_iter
+            # 학습 중단: detectron2의 train 루프는 `for self.iter in range(start, max_iter)` 구조라
+            # `self.trainer.max_iter` 변경만으로는 멈추지 않는다. 예외를 던져서 즉시 탈출한다.
+            raise EarlyStopException(
+                f"Early stopped at iter {next_iter} (epoch {current_epoch:.1f}); "
+                f"best {self.metric_name}={self.best_metric:.4f} at iter {self.best_iter}"
+            )
 
     def after_train(self):
         pass
@@ -386,7 +398,11 @@ class Detectron2Adapter(ModelAdapter):
         print(f"  OUTPUT: {self.cfg.OUTPUT_DIR}")
         print(f"{'='*60}\n")
 
-        trainer.train()
+        # EarlyStoppingHook이 EarlyStopException을 던지면 학습 루프 즉시 종료
+        try:
+            trainer.train()
+        except EarlyStopException as e:
+            print(f"  [INFO] {e}")
 
         # GPU 메모리 측정
         peak_memory_mb = None

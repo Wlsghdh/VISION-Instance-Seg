@@ -8,10 +8,18 @@ from pathlib import Path
 # ============================================================
 # 경로 설정
 # ============================================================
-PROJECT_ROOT = Path('/home/jjh0709/gitrepo/VISION-Instance-Seg')
+# 데이터(읽기 전용)는 jjh0709 원본 레포지토리를 공유 사용.
+# 결과(쓰기)는 사용자별 작업 디렉토리로 분리 저장.
+#   - 환경변수 VISION_RESULTS_ROOT 로 override 가능 (다중 사용자 병렬 실행 지원)
+#   - 기본값: PROJECT_ROOT (jjh0709) → 단독 사용 시 기존 동작과 동일
+import os
+
+PROJECT_ROOT = Path('/home/jjh0709/gitrepo/VISION-Instance-Seg')              # 데이터/코드 원본(읽기)
+RESULTS_ROOT = Path(os.environ.get('VISION_RESULTS_ROOT', str(PROJECT_ROOT)))  # 결과 저장 위치(쓰기)
+
 DATA_DIR = PROJECT_ROOT / 'data'
 DATA_AUG_DIR = PROJECT_ROOT / 'data_augmented'
-RESULTS_DIR = PROJECT_ROOT / 'results'
+RESULTS_DIR = RESULTS_ROOT / 'results'
 MERGED_DIR = RESULTS_DIR / 'merged_datasets'
 TRAINING_DIR = RESULTS_DIR / 'training'
 EVAL_DIR = RESULTS_DIR / 'evaluation'
@@ -172,7 +180,8 @@ DEFAULT_HYPERPARAMS = {
     "max_epochs": 1000,                    # early stopping에 맡기고 넉넉히
     "lr": 0.0015,                          # Linear Scaling Rule(0.02*12/16=0.015) + fine-tuning 1/10 보정
     "batch_size": 12,                      # A100 80GB GPU 활용률 개선 + gradient 안정
-    "seed": 42,                            # 3회 반복 시 42, 43, 44 사용
+    "seed": 42,                            # 단일 시드 실행 시 기본값
+    "seeds": [42, 43, 44],                 # 다중 시드 반복 실행 시 기본 목록 (exp1_config.md 기준)
     "warmup_epochs": 5,                    # 학습 초반 lr 점진 상승
     "eval_period_epochs": 5,               # 5 에폭마다 평가
     "checkpoint_period_epochs": 50,        # 디스크 절약 (체크포인트 1개 ≈ 548MB)
@@ -188,9 +197,16 @@ DEFAULT_HYPERPARAMS = {
 # ============================================================
 # 헬퍼 함수
 # ============================================================
-def get_output_dir(experiment: str, condition: str, category: str, model: str) -> Path:
-    """학습 결과 출력 디렉토리"""
-    return TRAINING_DIR / experiment / condition / category / model
+def get_output_dir(experiment: str, condition: str, category: str, model: str, seed: int = None) -> Path:
+    """학습 결과 출력 디렉토리
+
+    seed가 주어지면 model 하위에 seed_{N}/ 디렉토리를 추가한다.
+    (다중 시드 반복 실험에서 결과가 덮어쓰이지 않도록)
+    """
+    base = TRAINING_DIR / experiment / condition / category / model
+    if seed is not None:
+        return base / f"seed_{seed}"
+    return base
 
 
 def get_merged_dir(experiment: str, condition: str, category: str) -> Path:
