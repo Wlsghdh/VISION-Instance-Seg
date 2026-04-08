@@ -274,6 +274,8 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     # GenAI 데이터 (클래스당 균형 샘플링)
     if n_genai_per_class > 0 and cat_info["genai_ann"].exists():
         genai_data = load_coco(cat_info["genai_ann"])
+        if category == "Cable":
+            genai_data = filter_coco_by_category(genai_data, 1, {1: 0})
         genai_imgs, genai_anns = _sample_images_per_class(
             genai_data, cat_info["genai_images"], n_genai_per_class, seed + 1
         )
@@ -285,6 +287,8 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     # 전통 증강 데이터
     if n_traditional > 0 and cat_info["trad_ann"].exists():
         trad_data = load_coco(cat_info["trad_ann"])
+        if category == "Cable":
+            trad_data = filter_coco_by_category(trad_data, 1, {1: 0})
         trad_imgs, trad_anns = _sample_images(trad_data, cat_info["trad_images"], n_traditional, seed + 2)
         print(f"  전통증강: {len(trad_imgs)}장")
         sources.append((cat_info["trad_images"], trad_imgs, trad_anns))
@@ -359,6 +363,8 @@ def prepare_unified_dataset(experiment: str, condition: str,
         # GenAI 데이터
         if n_genai_per_class > 0 and subcat_info["genai_ann"] and subcat_info["genai_ann"].exists():
             genai_data = load_coco(subcat_info["genai_ann"])
+            if subcat_name == "Cable":
+                genai_data = filter_coco_by_category(genai_data, 1, {1: 0})
             genai_imgs, genai_anns = _sample_images_per_class(
                 genai_data, subcat_info["genai_images"], n_genai_per_class, seed + 1
             )
@@ -372,6 +378,8 @@ def prepare_unified_dataset(experiment: str, condition: str,
         # 전통 증강 데이터
         if n_traditional > 0 and subcat_info["trad_ann"] and subcat_info["trad_ann"].exists():
             trad_data = load_coco(subcat_info["trad_ann"])
+            if subcat_name == "Cable":
+                trad_data = filter_coco_by_category(trad_data, 1, {1: 0})
             trad_imgs, trad_anns = _sample_images(
                 trad_data, subcat_info["trad_images"], n_traditional, seed + 2
             )
