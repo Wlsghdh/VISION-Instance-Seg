@@ -76,6 +76,11 @@ class EarlyStoppingHook(HookBase):
             self.num_bad_evals = 0
             print(f"  [EarlyStopping] New best {self.metric_name}={metric_val:.4f} "
                   f"at epoch {current_epoch:.1f} (iter {next_iter})")
+            # best 모델 스냅샷 저장 (평가 시 이 파일을 우선 사용)
+            try:
+                self.trainer.checkpointer.save("model_best")
+            except Exception as exc:
+                print(f"  [EarlyStopping] model_best 저장 실패: {exc}")
         else:
             self.num_bad_evals += 1
             print(f"  [EarlyStopping] No improvement {self.num_bad_evals}/{self.patience} "
@@ -445,6 +450,10 @@ class Detectron2Adapter(ModelAdapter):
             trainer.train()
         except EarlyStopException as e:
             print(f"\n  {e}")
+            # Early stop으로 학습 루프가 끊기면 detectron2의 final 저장이 실행되지 않으므로
+            # 평가 단계가 model_final.pth를 못 찾음. 정상 종료와 동일하게 명시적으로 저장.
+            trainer.checkpointer.save("model_final")
+            print(f"  [EarlyStopping] model_final.pth 저장 완료")
 
         # GPU 모니터링 중지
         gpu_util_stop.set()
@@ -484,11 +493,14 @@ class Detectron2Adapter(ModelAdapter):
 
         metrics_file = Path(self.cfg.OUTPUT_DIR) / "metrics.json"
         if metrics_file.exists():
+            last_line = None
             with open(metrics_file) as f:
                 for line in f:
-                    pass
+                    if line.strip():
+                        last_line = line
+            if last_line is not None:
                 try:
-                    metrics["last_metrics"] = json.loads(line)
+                    metrics["last_metrics"] = json.loads(last_line)
                 except json.JSONDecodeError:
                     pass
 
