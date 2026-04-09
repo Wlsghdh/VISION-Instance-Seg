@@ -154,6 +154,9 @@ class MMDetAdapter(ModelAdapter):
                 type="CheckpointHook",
                 by_epoch=True,
                 interval=checkpoint_period_epochs,
+                # 주기 체크포인트 rotation. mmengine은 best_*.pth가 rotation 큐에서
+                # 배제된다는 보장이 없어 best가 aging out되지 않도록 최소 3 버퍼 유지.
+                max_keep_ckpts=max(hyperparams.get("max_periodic_checkpoints", 1), 3),
                 save_best="coco/segm_mAP",
                 rule="greater",
             ),

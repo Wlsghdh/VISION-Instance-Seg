@@ -282,6 +282,10 @@ class Detectron2Adapter(ModelAdapter):
         checkpoint_period_epochs = hyperparams.get("checkpoint_period_epochs", 10)
         cfg.SOLVER.CHECKPOINT_PERIOD = checkpoint_period_epochs * self.iters_per_epoch
 
+        # 주기 체크포인트 rotation 개수 (디스크 쿼터 보호)
+        # model_final.pth는 fvcore가 자동 보호, model_best.pth는 커스텀 save라 rotation 영향 없음
+        self._max_periodic_ckpts = hyperparams.get("max_periodic_checkpoints", 1)
+
         # LR decay steps (config의 lr_decay_steps 비율 적용)
         decay_steps = hyperparams.get("lr_decay_steps", (0.7, 0.9))
         cfg.SOLVER.STEPS = tuple(int(max_iter * s) for s in decay_steps)
@@ -375,6 +379,30 @@ class Detectron2Adapter(ModelAdapter):
         TrainerClass = self._get_trainer_class()
         trainer = TrainerClass(self.cfg)
         trainer.resume_or_load(resume=False)
+
+        # 주기 체크포인트 rotation 활성화
+        # DefaultTrainer.build_hooks()는 PeriodicCheckpointer를 max_to_keep 없이 생성하므로
+        # 학습 도중 모든 주기 체크포인트가 누적된다. trainer._hooks 리스트에서 찾아 교체.
+        # fvcore.common.checkpoint.PeriodicCheckpointer:438은 *_final.pth를 명시적으로 보호하고,
+        # EarlyStoppingHook이 별도로 저장하는 model_best.pth는 rotation 큐에 들어가지 않는다.
+        import weakref
+        from detectron2.engine.hooks import PeriodicCheckpointer
+        max_keep = getattr(self, "_max_periodic_ckpts", 1)
+        for i, h in enumerate(trainer._hooks):
+            if isinstance(h, PeriodicCheckpointer):
+                new_hook = PeriodicCheckpointer(
+                    trainer.checkpointer,
+                    self.cfg.SOLVER.CHECKPOINT_PERIOD,
+                    max_iter=self.cfg.SOLVER.MAX_ITER,
+                    max_to_keep=max_keep,
+                )
+                # register_hooks()가 평소 해주는 trainer 바인딩을 수동으로 처리
+                # (HookBase는 weakref.proxy로 trainer를 들고 있어야 before_train 등이 동작)
+                new_hook.trainer = weakref.proxy(trainer)
+                trainer._hooks[i] = new_hook
+                print(f"  [Checkpoint] Rotation 활성화: 최신 {max_keep}개만 유지 "
+                      f"(model_best/model_final 별도 보존)")
+                break
 
         # Early stopping hook 등록
         if self.early_stopping_hook is not None:

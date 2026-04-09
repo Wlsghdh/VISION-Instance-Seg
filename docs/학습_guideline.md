@@ -44,6 +44,7 @@ python -m training.train \
 | `--condition` | 실험별 조건명, all | 데이터 조건 |
 | `--model` | 모델명, all | 학습 모델 |
 | `--multi-seed` | (플래그) | seed=[42,43,44] 3회 반복 실행 |
+| `--skip-existing` | (플래그) | 이미 학습+평가가 완료된 (model_best + eval_results) 조합 건너뜀 |
 | `--tag` | 문자열 | 결과 경로에 태그 추가 (HP 비교용) |
 | `--eval-only` | (플래그) | 학습 스킵, 평가만 실행 |
 
@@ -103,34 +104,39 @@ python -m training.data_pipeline \
     --category Unified --experiment exp1 --condition baseline --force
 ```
 
-출력: `results/merged_datasets/exp1/baseline/Unified/{images/, annotations.json}`
+출력: `results/merged_datasets/exp1/baseline/Unified/seed42/{images/, annotations.json}` (시드별 분리, 링크 사용 — 하드링크 → 심볼릭링크 fallback)
 
 ---
 
 ## 4. 실험별 조건
 
+> **원본 이미지 수 제한**: 모든 조건에서 **클래스당 20장** (`config.py`의 `N_ORIGINAL_TRAIN_PER_CLASS=20`).
+> `_sample_images_per_class()`로 클래스별 균형 샘플링. 클래스의 가용 이미지가 20장 미만이면 자동으로 전체 사용.
+>
+> **Unified 모드 실측 (14 클래스)**: Cable 20 + Screw 20 + Casting 40 + Console 80 + Cylinder 80 + Wood 40 = **총 280장**
+
 ### exp1: GenAI 증강 수에 따른 성능 변화
 
-| 조건명 | 원본 | GenAI/클래스 |
-|--------|:----:|:------------:|
-| `baseline` | 전체 | 0 |
-| `genai_25` | 전체 | 25 |
-| `genai_50` | 전체 | 50 |
-| `genai_75` | 전체 | 75 |
-| `genai_100` | 전체 | 100 |
-| `genai_125` | 전체 | 125 |
+| 조건명 | 원본 (클래스당) | GenAI/클래스 |
+|--------|:--------------:|:------------:|
+| `baseline` | 20장 | 0 |
+| `genai_25` | 20장 | 25 |
+| `genai_50` | 20장 | 50 |
+| `genai_75` | 20장 | 75 |
+| `genai_100` | 20장 | 100 |
+| `genai_125` | 20장 | 125 |
 
 기본 모델: `mask_rcnn`, `cascade_mask_rcnn`
 
 ### exp2: 전통 증강 vs GenAI 비교
 
-| 조건명 | 원본 | GenAI/클래스 | 전통 증강 |
-|--------|:----:|:-----------:|:---------:|
-| `cond1` | 전체 | 0 | 0 |
-| `cond2` | 전체 | 0 | 250 |
-| `cond3` | 전체 | 125 | 0 |
-| `cond4` | 전체 | 125 | 250 |
-| `cond5` | 전체 | 125 | 2,750 |
+| 조건명 | 원본 (클래스당) | GenAI/클래스 | 전통 증강 |
+|--------|:--------------:|:-----------:|:---------:|
+| `cond1` | 20장 | 0 | 0 |
+| `cond2` | 20장 | 0 | 250 |
+| `cond3` | 20장 | 125 | 0 |
+| `cond4` | 20장 | 125 | 250 |
+| `cond5` | 20장 | 125 | 2,750 |
 
 기본 모델: `mask_rcnn`, `cascade_mask_rcnn`, `maskdino`
 
@@ -138,9 +144,9 @@ python -m training.data_pipeline \
 
 | 조건명 | 구성 |
 |--------|------|
-| `original_only` | 원본 전체 |
-| `with_trad` | 원본 전체 + 전통 증강 3,000 |
-| `with_genai_trad` | 원본 전체 + GenAI 125/클래스 + 전통 증강 2,750 |
+| `original_only` | 원본 클래스당 20장 |
+| `with_trad` | 원본 20/cls + 전통 증강 3,000 |
+| `with_genai_trad` | 원본 20/cls + GenAI 125/cls + 전통 증강 2,750 |
 
 기본 모델: 7종 전체
 
@@ -174,13 +180,19 @@ python -m training.train \
 python -m training.train \
     --category Unified --experiment exp1 --condition all \
     --model all --multi-seed
+
+# 단일 시드로 먼저 돌렸다가 나중에 다중 시드로 확장하는 경우
+# 기존 seed42는 재사용, seed43/seed44만 신규 학습
+python -m training.train \
+    --category Unified --experiment exp1 --condition all \
+    --model all --multi-seed --skip-existing
 ```
 
-결과 경로:
+결과 경로 (단일 시드도 동일하게 seed{N}/ 하위 폴더 사용):
 ```
-results/training/exp1/{cond}/Unified/{model}/seed42/
-results/training/exp1/{cond}/Unified/{model}/seed43/
-results/training/exp1/{cond}/Unified/{model}/seed44/
+results/training/exp1/{cond}/Unified/{model}/seed42/   ← 단일 모드도 여기에 저장 (기본)
+results/training/exp1/{cond}/Unified/{model}/seed43/   ← --multi-seed 시 추가
+results/training/exp1/{cond}/Unified/{model}/seed44/   ← --multi-seed 시 추가
 ```
 
 ### 5-3. 하이퍼파라미터 커스텀
@@ -198,7 +210,7 @@ python -m training.train \
     --tag bs4_lr5e-4
 ```
 
-`--tag` 사용 시 출력 경로: `results/training/exp1/baseline/Unified/cascade_mask_rcnn_bs4_lr5e-4/`
+`--tag` 사용 시 출력 경로: `results/training/exp1/baseline/Unified/cascade_mask_rcnn_bs4_lr5e-4/seed42/`
 
 ### 5-4. 평가만 (이미 학습된 모델)
 
@@ -259,24 +271,28 @@ tmux new -s exp1 "/home/{user}/.conda/envs/{env}/bin/python -m training.train ..
 
 ```
 results/
-├── merged_datasets/{exp}/{cond}/{cat}/          ← 병합 데이터
+├── merged_datasets/{exp}/{cond}/{cat}/seed{N}/   ← 병합 데이터 (시드별 분리, 링크 사용)
+│   ├── images/                                    원본 데이터에 링크 (하드링크 → 심볼릭링크 fallback)
+│   └── annotations.json                           시드별로 다른 데이터 샘플링 (true independent replication)
+│
+├── _unified_val/                                  ← 통합 val 데이터 (시드 무관)
 │   ├── images/
 │   └── annotations.json
-│   (Unified 카테고리는 6개 카테고리 통합)
 │
-├── _unified_val/                                 ← 통합 val 데이터
-│   ├── images/
-│   └── annotations.json
+├── training/{exp}/{cond}/{cat}/{model}/seed{N}/  ← 학습 결과 (단일/다중 시드 모두 seed{N}/ 사용)
+│   ├── model_best.pth         ← 최종 보존 파일. 학습 후 cleanup으로 이것만 남음
+│   ├── config.yaml            ← 학습 설정 스냅샷
+│   ├── metrics.json           ← 학습 로그 (epoch별 loss/lr/eval)
+│   ├── events.out.tfevents.*  ← TensorBoard 로그
+│   └── eval_results/results.json  ← COCO 평가 결과
 │
-├── training/{exp}/{cond}/{cat}/{model}/          ← 학습 결과
-│   ├── model_final.pth (detectron2)
-│   ├── best_*.pth (mmdet)
-│   ├── config.yaml / config.py
-│   ├── metrics.json (학습 로그)
-│   └── eval_results/results.json
-│   (다중 시드 모드: model/seed42/, seed43/, seed44/ 하위로 분리)
+│   (학습 중 임시 — 평가 성공 시 자동 삭제됨):
+│   ├── model_final.pth
+│   ├── model_0000XXX.pth   (rotation 최신 1개)
+│   ├── best_*.pth          (mmdet 계열)
+│   └── last_checkpoint
 │
-├── evaluation/results.json                       ← 전체 결과 마스터 파일
+├── evaluation/results.json                       ← 전체 결과 마스터 (매 condition 끝날 때마다 incremental save)
 └── reports/                                      ← CSV, 비교 테이블
 ```
 
@@ -328,16 +344,50 @@ quota -s   # 본인 쿼타
 du -sh results/training/  # 결과 폴더 크기
 ```
 
-### 체크포인트 정리
+### 체크포인트 자동 Rotation + Cleanup
 
-학습 후 자동으로 정리되지 않는 경우:
+학습 중에는 **rotation**, 학습 끝나면 **cleanup**으로 디스크를 최소화한다.
 
+#### 학습 중: Rotation
+`max_periodic_checkpoints=1` (config.py 기본값) — 주기 체크포인트는 최신 1개만 자동 유지.
+- detectron2: `PeriodicCheckpointer(max_to_keep=1)` — `model_final.pth`는 fvcore에서 명시적으로 보호.
+- mmdet: `CheckpointHook(max_keep_ckpts=3)` — `best_*.pth` 보호 버퍼로 최소 3개 유지.
+- `model_best.pth`는 rotation 큐에 들어가지 않아 항상 보존됨.
+
+#### 학습 + 평가 후: Cleanup
+`run_single()`에서 평가 성공 직후 `cleanup_artifacts()` 자동 호출.
+- **삭제**: `model_final.pth`, `model_0000XXX.pth` (주기 체크포인트), `last_checkpoint`
+- **보존**: `model_best.pth`, `eval_results/`, `config.yaml`, `metrics.json`, `events.out.tfevents.*`
+- **안전장치**: `model_best.pth`가 존재할 때만 동작 (보존할 게 없으면 스킵)
+
+#### 디스크 사용량 비교
+
+| 시점 | Mask R-CNN | Cascade Mask R-CNN |
+|---|---:|---:|
+| 학습 중 (피크) | ~1.0 GB | ~1.6 GB |
+| 평가 직후 (cleanup 적용) | **~0.34 GB** | **~0.55 GB** |
+| 절감 | 66% | 66% |
+
+→ 36 runs (multi-seed full): 60 GB → **20 GB**
+
+**`merged_datasets` 디스크**:
+- 원본 데이터 파일을 **링크로 연결**하여 디스크 데이터 1번만 저장
+- 우선순위: 하드 링크 → 심볼릭 링크 → 풀 카피
+  - 같은 파일시스템: 하드 링크 (가장 효율적)
+  - 다른 파일시스템 (`/home/jjh0709/...` ↔ `/project/ahnailab/...`): 심볼릭 링크 (76 byte / 파일)
+  - 둘 다 실패: 풀 카피 (드뭄)
+- 시드별/조건별로 디렉토리는 분리되지만 데이터는 원본 1번만
+- **실측**: exp1 6 conditions × 3 seeds = **~137 MB** (이전 풀 카피 시 ~5 GB → 97% 절감)
+
+**수동 정리** (필요시):
 ```bash
-# model_final.pth만 남기고 중간 체크포인트 삭제
-find results/training/exp1/ -name "model_0*.pth" -delete
-```
+# 특정 실험 통째로 삭제
+rm -rf results/training/exp1/
 
-체크포인트 1개 ≈ 548MB. `checkpoint_period_epochs=50`으로 설정되어 있어 50 에폭마다 1개 저장.
+# 학습 도중 강제 cleanup이 필요한 경우 (rotation 안 먹은 경우)
+find results/training/exp1/ -regex '.*/model_[0-9]+\.pth' -delete
+find results/training/exp1/ -name 'model_final.pth' -delete
+```
 
 ---
 
@@ -347,7 +397,7 @@ find results/training/exp1/ -name "model_0*.pth" -delete
 - **학습 시간 참고**: Cascade Mask R-CNN baseline ~1.5시간 (early stopping 작동 시)
 - **`--multi-seed`**: 단순히 `--seed` 3개를 순차로 도는 게 아니라 결과 경로에 `seed{N}` 하위 폴더 생성하여 자동 분리
 - **`--model all` 사용 시**: 실험에 정의된 모델만 순차 실행 (exp1은 Mask R-CNN, Cascade Mask R-CNN 2개)
-- **중단 후 재시작**: detectron2는 `model_final.pth`가 있으면 이미 완료된 것으로 간주, 다시 돌리려면 폴더 삭제 후 재실행
+- **중단 후 재시작**: 기본 동작은 그냥 재실행하면 출력 디렉토리를 덮어씀. 이미 학습+평가 완료된 조합을 건너뛰고 싶으면 `--skip-existing` 플래그 사용 (model_best.pth + eval_results/results.json 둘 다 있는 조합만 SKIP). 강제 재학습은 폴더 삭제 후 재실행
 - **Cable val 필터링**: thunderbolt만 평가에 사용됨 (자동 처리)
 - **Unified 카테고리 평가**: 14개 클래스 전체의 평균 mAP 사용 (클래스 단위 평균, 카테고리별 평균 아님)
 - **config.py 수정**: 실험 조건이나 하이퍼파라미터 기본값을 변경하려면 `training/config.py` 수정

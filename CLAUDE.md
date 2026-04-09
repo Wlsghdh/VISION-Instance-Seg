@@ -134,37 +134,43 @@ VISION-Instance-Seg/
 
 ## 실험 계획 요약
 
-### 실험 1: 생성AI 증강 수에 따른 성능 변화
+> **공통**: 모든 실험에서 원본 이미지는 **클래스당 20장** (`config.py`의 `N_ORIGINAL_TRAIN_PER_CLASS=20`).
+> Unified 모드(14 클래스 통합)는 클래스별 균형 샘플링으로 **총 280장 원본** (Cable 20 + Screw 20 + Casting 40 + Console 80 + Cylinder 80 + Wood 40).
 
-| 조건 | 원본 | 생성AI | 합계 |
-|------|------|--------|------|
-| Baseline | 25장 | 0 | 25 |
-| +50 | 25장 | 50 | 75 |
-| +100 | 25장 | 100 | 125 |
-| +150 | 25장 | 150 | 175 |
-| +200 | 25장 | 200 | 225 |
-| +250 | 25장 | 250 | 275 |
+### 실험 1: 생성AI 증강 수에 따른 성능 변화 (6 conditions)
+
+| 조건 | 원본 (클래스당) | GenAI/클래스 | Unified 합계 |
+|------|:----:|:--------:|:------:|
+| `baseline` | 20장 | 0 | 280 |
+| `genai_25` | 20장 | 25 | ~629 |
+| `genai_50` | 20장 | 50 | ~978 |
+| `genai_75` | 20장 | 75 | ~1,326 |
+| `genai_100` | 20장 | 100 | ~1,675 |
+| `genai_125` | 20장 | 125 | ~2,024 |
 
 모델: Mask R-CNN, Cascade Mask R-CNN
 
-### 실험 2: 전통적 증강 vs 생성형 AI 증강 비교 (5가지 조건)
+### 실험 2: 전통적 증강 vs 생성형 AI 증강 비교 (5 conditions)
 
-| # | 구성 | 총 데이터 |
-|---|------|---------|
-| 1 | 원본 25장 | 25 |
-| 2 | 원본 25 + 전통 250 | 275 |
-| 3 | 원본 25 + 생성AI 250 | 275 |
-| 4 | 원본 25 + 생성AI 250 + 전통 250 | 525 |
-| 5 | 원본 25 + 생성AI 250 + 전통 2,750 | 3,025 |
+| 조건 | 구성 |
+|------|------|
+| `cond1` | 원본 20/cls |
+| `cond2` | 원본 20/cls + 전통 250 |
+| `cond3` | 원본 20/cls + GenAI 125/cls |
+| `cond4` | 원본 20/cls + GenAI 125/cls + 전통 250 |
+| `cond5` | 원본 20/cls + GenAI 125/cls + 전통 2,750 |
 
-### 실험 3: 7종 모델 비교
+모델: Mask R-CNN, Cascade Mask R-CNN, MaskDINO
 
-모델: Mask R-CNN, Cascade R-CNN, Cascade Mask R-CNN, SOLOv2, Mask DINO, +최신 2종
+### 실험 3: 7종 모델 비교 (3 conditions)
 
-데이터 조건:
-1. 원본 전체
-2. 원본 전체 + 전통 증강 3,000장
-3. 원본 전체 + 생성AI 250장 + 전통 증강 2,750장
+모델: Mask R-CNN, Cascade Mask R-CNN, MaskDINO, Mask2Former, Cascade R-CNN, SOLOv2, RTMDet-Ins
+
+| 조건 | 구성 |
+|------|------|
+| `original_only` | 원본 20/cls |
+| `with_trad` | 원본 20/cls + 전통 3,000 |
+| `with_genai_trad` | 원본 20/cls + GenAI 125/cls + 전통 2,750 |
 
 ---
 
