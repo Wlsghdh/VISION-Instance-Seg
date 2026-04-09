@@ -166,37 +166,41 @@ MODELS = {
 # ============================================================
 # 실험 정의
 # ============================================================
+# 학습용 원본 이미지 수 (클래스당). _sample_images_per_class()로 클래스별 균형 샘플링.
+# 클래스의 가용 이미지가 이 값보다 적으면 자동으로 전체 사용 (data_pipeline._sample_images_per_class).
+N_ORIGINAL_TRAIN_PER_CLASS = 20
+
 EXPERIMENTS = {
     "exp1": {
         "description": "생성AI 증강 수에 따른 성능 변화 (클래스당 0~125장)",
         "models": ["mask_rcnn", "cascade_mask_rcnn"],
         "conditions": {
-            "baseline":   {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 0},
-            "genai_25":   {"n_original": -1, "n_genai_per_class": 25,  "n_traditional": 0},
-            "genai_50":   {"n_original": -1, "n_genai_per_class": 50,  "n_traditional": 0},
-            "genai_75":   {"n_original": -1, "n_genai_per_class": 75,  "n_traditional": 0},
-            "genai_100":  {"n_original": -1, "n_genai_per_class": 100, "n_traditional": 0},
-            "genai_125":  {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 0},
+            "baseline":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 0},
+            "genai_25":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 25,  "n_traditional": 0},
+            "genai_50":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 50,  "n_traditional": 0},
+            "genai_75":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 75,  "n_traditional": 0},
+            "genai_100":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 100, "n_traditional": 0},
+            "genai_125":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 0},
         },
     },
     "exp2": {
         "description": "전통적 증강 vs 생성형 AI 증강 비교",
         "models": ["mask_rcnn", "cascade_mask_rcnn", "maskdino"],
         "conditions": {
-            "cond1": {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 0},
-            "cond2": {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 250},
-            "cond3": {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 0},
-            "cond4": {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 250},
-            "cond5": {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 2750},
+            "cond1": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 0},
+            "cond2": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 250},
+            "cond3": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 0},
+            "cond4": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 250},
+            "cond5": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 2750},
         },
     },
     "exp3": {
         "description": "7종 모델 비교",
         "models": list(MODELS.keys()),
         "conditions": {
-            "original_only":   {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 0},      # 원본 전체
-            "with_trad":       {"n_original": -1, "n_genai_per_class": 0,   "n_traditional": 3000},    # 원본 + 전통 3000
-            "with_genai_trad": {"n_original": -1, "n_genai_per_class": 125, "n_traditional": 2750},    # 원본 + genai 125/cls + 전통 2750
+            "original_only":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 0},      # 원본 클래스당 20장만
+            "with_trad":       {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 3000},    # 원본 20/cls + 전통 3000
+            "with_genai_trad": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 2750},    # 원본 20/cls + genai 125/cls + 전통 2750
         },
     },
 }
@@ -214,6 +218,7 @@ DEFAULT_HYPERPARAMS = {
     "warmup_epochs": 5,                    # 학습 초반 lr 점진 상승
     "eval_period_epochs": 5,               # 5 에폭마다 평가
     "checkpoint_period_epochs": 50,        # 디스크 절약 (체크포인트 1개 ≈ 548MB)
+    "max_periodic_checkpoints": 1,         # 주기 체크포인트 rotation (최신 N개만 유지, model_best/model_final은 영향 없음)
     "input_min_size": (640, 672, 704, 736, 768, 800),  # detectron2 기본값
     "input_max_size": 1333,                # 고해상도 유지, 작은 결함 보존
     # Early stopping
@@ -238,9 +243,18 @@ def get_output_dir(experiment: str, condition: str, category: str, model: str,
     return base
 
 
-def get_merged_dir(experiment: str, condition: str, category: str) -> Path:
-    """병합 데이터셋 디렉토리"""
-    return MERGED_DIR / experiment / condition / category
+def get_merged_dir(experiment: str, condition: str, category: str,
+                   seed: int = None) -> Path:
+    """병합 데이터셋 디렉토리.
+
+    seed가 주어지면 시드별 하위 폴더 생성하여 진짜 독립 replication 보장
+    (각 시드가 자체 데이터 샘플링을 하도록).
+    하드 링크로 원본을 공유하므로 시드별 추가 디스크 비용은 거의 없음.
+    """
+    base = MERGED_DIR / experiment / condition / category
+    if seed is not None:
+        return base / f"seed{seed}"
+    return base
 
 
 def get_category_info(category: str) -> dict:

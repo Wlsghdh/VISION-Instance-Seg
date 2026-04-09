@@ -8,6 +8,7 @@
 """
 
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -162,8 +163,30 @@ def _sample_images_per_class(data: dict, images_dir: Path,
     return sampled, anns
 
 
+def _link_or_copy(src: Path, dst: Path) -> None:
+    """원본 파일을 링크로 연결 (실패 시 fallback).
+
+    우선순위:
+      1. 하드 링크 (os.link) — 같은 파일시스템 내. 가장 효율적, inode 공유.
+      2. 심볼릭 링크 (os.symlink) — cross-filesystem 가능. 경로 문자열만 저장.
+         원본 데이터(/home/jjh0709/...)와 결과(/project/ahnailab/...)가 다른
+         파티션이라 1번이 실패하면 2번으로 fallback.
+      3. 풀 카피 (shutil.copy2) — 위 둘 다 실패할 때만 (드뭄).
+
+    학습 코드 입장에선 셋 다 동일하게 동작 (OS가 알아서 follow).
+    """
+    src_abs = src.resolve()  # symlink는 절대 경로 필요
+    try:
+        os.link(str(src_abs), str(dst))
+    except OSError:
+        try:
+            os.symlink(str(src_abs), str(dst))
+        except OSError:
+            shutil.copy2(str(src_abs), str(dst))
+
+
 def _merge_sources(sources: list, out_dir: Path, categories: list) -> Tuple[int, int]:
-    """여러 소스를 하나로 병합 (ID 재부여, 파일 복사)"""
+    """여러 소스를 하나로 병합 (ID 재부여, 파일 하드링크)"""
     out_images_dir = out_dir / 'images'
     out_images_dir.mkdir(parents=True, exist_ok=True)
 
@@ -185,7 +208,7 @@ def _merge_sources(sources: list, out_dir: Path, categories: list) -> Tuple[int,
                 ext = Path(img["file_name"]).suffix
                 dst = out_images_dir / f"{stem}_{next_img_id:06d}{ext}"
 
-            shutil.copy2(str(src), str(dst))
+            _link_or_copy(src, dst)
             img_id_map[img["id"]] = next_img_id
             all_images.append({
                 "id": next_img_id,
@@ -239,7 +262,7 @@ def prepare_dataset(experiment: str, condition: str, category: str,
         )
 
     params = exp_info["conditions"][condition]
-    out_dir = get_merged_dir(experiment, condition, category)
+    out_dir = get_merged_dir(experiment, condition, category, seed=seed)
 
     # 이미 존재하면 스킵
     if not force and (out_dir / "annotations.json").exists():
@@ -255,18 +278,20 @@ def prepare_dataset(experiment: str, condition: str, category: str,
         (out_dir / "annotations.json").unlink()
 
     sources = []
-    n_original = params["n_original"]
+    n_original_per_class = params["n_original_per_class"]
     n_genai_per_class = params["n_genai_per_class"]
     n_traditional = params["n_traditional"]
 
-    # 원본 데이터
+    # 원본 데이터 (클래스별 균형 샘플링)
     if cat_info["train_ann"].exists():
         orig_data = load_coco(cat_info["train_ann"])
         # Cable의 경우 thunderbolt(id=1)만 사용, category_id를 0으로 리매핑
         if category == "Cable":
             orig_data = filter_coco_by_category(orig_data, 1, {1: 0})
-        orig_imgs, orig_anns = _sample_images(orig_data, cat_info["train_images"], n_original, seed)
-        print(f"  원본: {len(orig_imgs)}장")
+        orig_imgs, orig_anns = _sample_images_per_class(
+            orig_data, cat_info["train_images"], n_original_per_class, seed
+        )
+        print(f"  원본: {len(orig_imgs)}장 (클래스당 {n_original_per_class}장 목표)")
         sources.append((cat_info["train_images"], orig_imgs, orig_anns))
     else:
         print(f"  [WARN] 원본 없음: {cat_info['train_ann']}")
@@ -319,7 +344,7 @@ def prepare_unified_dataset(experiment: str, condition: str,
         )
 
     params = exp_info["conditions"][condition]
-    out_dir = get_merged_dir(experiment, condition, "Unified")
+    out_dir = get_merged_dir(experiment, condition, "Unified", seed=seed)
 
     if not force and (out_dir / "annotations.json").exists():
         data = load_coco(out_dir / "annotations.json")
@@ -334,7 +359,7 @@ def prepare_unified_dataset(experiment: str, condition: str,
 
     sources = []
     global_id_offset = unified_info["global_id_offset"]
-    n_original = params["n_original"]
+    n_original_per_class = params["n_original_per_class"]
     n_genai_per_class = params["n_genai_per_class"]
     n_traditional = params["n_traditional"]
 
@@ -345,17 +370,17 @@ def prepare_unified_dataset(experiment: str, condition: str,
 
         print(f"\n  [{subcat_name}] offset={offset}, classes={subcat_info['classes']}")
 
-        # 원본 데이터
+        # 원본 데이터 (클래스별 균형 샘플링)
         if subcat_info["train_ann"] and subcat_info["train_ann"].exists():
             orig_data = load_coco(subcat_info["train_ann"])
             if subcat_name == "Cable":
                 orig_data = filter_coco_by_category(orig_data, 1, {1: 0})
-            orig_imgs, orig_anns = _sample_images(
-                orig_data, subcat_info["train_images"], n_original, seed
+            orig_imgs, orig_anns = _sample_images_per_class(
+                orig_data, subcat_info["train_images"], n_original_per_class, seed
             )
             _remap_category_ids(orig_anns, local_to_global)
             _prefix_filenames(orig_imgs, subcat_name)
-            print(f"    원본: {len(orig_imgs)}장")
+            print(f"    원본: {len(orig_imgs)}장 (클래스당 {n_original_per_class}장 목표)")
             sources.append((subcat_info["train_images"], orig_imgs, orig_anns))
         else:
             print(f"    [WARN] 원본 없음: {subcat_info['train_ann']}")
