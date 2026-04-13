@@ -117,6 +117,39 @@ def _build_unified_category():
 CATEGORIES["Unified"] = _build_unified_category()
 
 
+# 실험 2용 3클래스 통합 (Inclusoes + Dirty + impurities)
+EXP2_SUBCATEGORIES = ["Inclusoes", "Dirty", "impurities"]
+
+
+def _build_exp2_3cls():
+    """실험 2 대상 3개 defect를 합쳐 3클래스 카테고리 생성"""
+    all_classes = []
+    global_id_offset = {}
+    for subcat in EXP2_SUBCATEGORIES:
+        global_id_offset[subcat] = len(all_classes)
+        all_classes.extend(CATEGORIES[subcat]["classes"])
+    return {
+        "classes": all_classes,   # ["Inclusoes", "Dirty", "impurities"]
+        "coco_categories": [
+            {"id": i, "name": c, "supercategory": "defect"}
+            for i, c in enumerate(all_classes)
+        ],
+        "num_classes": len(all_classes),
+        "subcategories": EXP2_SUBCATEGORIES,
+        "global_id_offset": global_id_offset,
+        "train_images": None,
+        "train_ann": None,
+        "val_images": None,
+        "val_ann": None,
+        "genai_images": None,
+        "genai_ann": None,
+        "trad_images": None,
+        "trad_ann": None,
+        "val_filter_category_id": None,
+        "val_category_remap": None,
+    }
+
+
 # ============================================================
 # 개별 Defect 카테고리 (단일 클래스 학습용)
 # 부모 카테고리의 데이터를 공유하되, 특정 defect만 필터링
@@ -166,6 +199,9 @@ CATEGORIES["pits"] = _cat_single_defect("Wood", "pits", 1)
 
 # Cable/Screw는 원래 1클래스이므로 그대로 사용 가능
 # CATEGORIES["thunderbolt"] = Cable, CATEGORIES["defect"] = Screw
+
+# 실험 2용 3클래스 통합 등록 (개별 defect 정의 이후에 호출)
+CATEGORIES["Exp2_3cls"] = _build_exp2_3cls()
 
 # ============================================================
 # 모델 정의
@@ -235,29 +271,24 @@ EXPERIMENTS = {
         },
     },
     "exp2": {
-        "description": "전통 vs GenAI 비교 (Phase 1: 2종 모델)",
+        "description": "전통 vs GenAI 비교 + (원본+GenAI)+전통 N배 탐색",
         "models": ["mask_rcnn", "cascade_mask_rcnn"],
         "conditions": {
+            # Phase 1: 전통 vs GenAI (2종 모델)
             "cond1": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},       # baseline
             "cond2": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 125},     # 전통 125/cls
             "cond3": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 0},       # GenAI 125/cls
-        },
-    },
-    "exp3": {
-        "description": "(원본+GenAI) + 전통 증강 N배 탐색 (7종 모델)",
-        "models": list(MODELS.keys()),
-        "conditions": {
-            # (20+125)×N = 145×N per class
-            "trad_1x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 145},
-            "trad_2x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 290},
-            "trad_3x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 435},
-            "trad_4x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 580},
-            "trad_5x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 725},
-            "trad_6x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 870},
-            "trad_7x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1015},
-            "trad_8x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1160},
-            "trad_9x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1305},
-            "trad_10x": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1450},
+            # Phase 2: cond4 (원본25+GenAI125)+전통N배 — (25+125)×N = 150×N per class (7종 모델)
+            "cond4_1x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 150},
+            "cond4_2x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 300},
+            "cond4_3x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 450},
+            "cond4_4x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 600},
+            "cond4_5x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 750},
+            "cond4_6x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 900},
+            "cond4_7x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 1050},
+            "cond4_8x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 1200},
+            "cond4_9x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 1350},
+            "cond4_10x": {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 1500},
         },
     },
 }
