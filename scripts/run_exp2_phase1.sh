@@ -24,7 +24,8 @@ for cat in "${DEFECTS[@]}"; do
       --category "$cat" --experiment exp2 --condition all --model "$model" \
       --max-epochs 200 --patience 10 2>&1 | tee "results/logs/exp2_${cat}_${model}.log"
     echo "[DONE] $cat / $model"
-    sleep 10
+    echo "[COOLDOWN] 5분 대기..."
+    sleep 300
   done
 done
 

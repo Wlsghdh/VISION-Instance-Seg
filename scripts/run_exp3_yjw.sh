@@ -33,7 +33,8 @@ for cond in "${CONDITIONS[@]}"; do
       CUDA_VISIBLE_DEVICES=$GPU conda run -n jjh python -m training.train \
         --category "$cat" --experiment exp3 --condition "$cond" --model "$model" \
         --max-epochs 200 --patience 10 2>&1 | tee "results/logs/exp3_${cat}_${cond}_${model}.log"
-      sleep 10
+      echo "[COOLDOWN] 5분 대기..."
+      sleep 300
     done
   done
 done
