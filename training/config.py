@@ -116,6 +116,57 @@ def _build_unified_category():
 
 CATEGORIES["Unified"] = _build_unified_category()
 
+
+# ============================================================
+# 개별 Defect 카테고리 (단일 클래스 학습용)
+# 부모 카테고리의 데이터를 공유하되, 특정 defect만 필터링
+# ============================================================
+def _cat_single_defect(parent_name, defect_name, filter_category_id):
+    """부모 카테고리에서 특정 defect만 추출한 단일 클래스 카테고리"""
+    parent = CATEGORIES[parent_name]
+    return {
+        "classes": [defect_name],
+        "coco_categories": [{"id": 0, "name": defect_name, "supercategory": "defect"}],
+        "train_images": parent["train_images"],
+        "train_ann": parent["train_ann"],
+        "val_images": parent["val_images"],
+        "val_ann": parent["val_ann"],
+        "genai_images": parent["genai_images"],
+        "genai_ann": parent["genai_ann"],
+        "trad_images": parent["trad_images"],
+        "trad_ann": parent["trad_ann"],
+        "val_filter_category_id": filter_category_id,
+        "val_category_remap": {filter_category_id: 0},
+        "train_filter_category_id": filter_category_id,
+        "train_category_remap": {filter_category_id: 0},
+        "num_classes": 1,
+        "parent_category": parent_name,
+    }
+
+
+# Casting 개별 defect
+CATEGORIES["Inclusoes"] = _cat_single_defect("Casting", "Inclusoes", 0)
+CATEGORIES["Rechupe"] = _cat_single_defect("Casting", "Rechupe", 1)
+
+# Console 개별 defect
+CATEGORIES["Collision"] = _cat_single_defect("Console", "Collision", 0)
+CATEGORIES["Dirty"] = _cat_single_defect("Console", "Dirty", 1)
+CATEGORIES["Gap"] = _cat_single_defect("Console", "Gap", 2)
+CATEGORIES["Scratch"] = _cat_single_defect("Console", "Scratch", 3)
+
+# Cylinder 개별 defect
+CATEGORIES["Chip"] = _cat_single_defect("Cylinder", "Chip", 0)
+CATEGORIES["PistonMiss"] = _cat_single_defect("Cylinder", "PistonMiss", 1)
+CATEGORIES["Porosity"] = _cat_single_defect("Cylinder", "Porosity", 2)
+CATEGORIES["RCS"] = _cat_single_defect("Cylinder", "RCS", 3)
+
+# Wood 개별 defect
+CATEGORIES["impurities"] = _cat_single_defect("Wood", "impurities", 0)
+CATEGORIES["pits"] = _cat_single_defect("Wood", "pits", 1)
+
+# Cable/Screw는 원래 1클래스이므로 그대로 사용 가능
+# CATEGORIES["thunderbolt"] = Cable, CATEGORIES["defect"] = Screw
+
 # ============================================================
 # 모델 정의
 # ============================================================
@@ -184,23 +235,29 @@ EXPERIMENTS = {
         },
     },
     "exp2": {
-        "description": "전통적 증강 vs 생성형 AI 증강 비교 (per-class 단위)",
-        "models": ["mask_rcnn", "cascade_mask_rcnn", "maskdino"],
+        "description": "전통 vs GenAI 비교 (Phase 1: 2종 모델)",
+        "models": ["mask_rcnn", "cascade_mask_rcnn"],
         "conditions": {
             "cond1": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},       # baseline
-            "cond2": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 125},     # 전통 125/cls (GenAI 분량과 동일)
+            "cond2": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 125},     # 전통 125/cls
             "cond3": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 0},       # GenAI 125/cls
-            "cond4": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 200},     # GenAI 125 + 전통 200/cls (원본×10)
-            "cond5": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1250},    # GenAI 125 + 전통 1250/cls (GenAI×10)
         },
     },
     "exp3": {
-        "description": "7종 모델 비교 (per-class 단위)",
+        "description": "(원본+GenAI) + 전통 증강 N배 탐색 (7종 모델)",
         "models": list(MODELS.keys()),
         "conditions": {
-            "original_only":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},       # 원본 20/cls
-            "with_trad":       {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 1450},    # 원본 20/cls + 전통 1450/cls = (20+125)×10
-            "with_genai_trad": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1450},    # 원본 20/cls + genai 125/cls + 전통 1450/cls
+            # (20+125)×N = 145×N per class
+            "trad_1x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 145},
+            "trad_2x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 290},
+            "trad_3x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 435},
+            "trad_4x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 580},
+            "trad_5x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 725},
+            "trad_6x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 870},
+            "trad_7x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1015},
+            "trad_8x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1160},
+            "trad_9x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1305},
+            "trad_10x": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1450},
         },
     },
 }

@@ -284,11 +284,17 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     n_traditional_per_class = params.get("n_traditional_per_class", 0)
     n_traditional = params.get("n_traditional", 0)
 
+    # 개별 defect 필터링 설정 (단일 클래스 학습용)
+    train_filter_id = cat_info.get("train_filter_category_id")
+    train_remap = cat_info.get("train_category_remap")
+
     # 원본 데이터 (클래스별 균형 샘플링)
     if cat_info["train_ann"].exists():
         orig_data = load_coco(cat_info["train_ann"])
-        # Cable의 경우 thunderbolt(id=1)만 사용, category_id를 0으로 리매핑
-        if category == "Cable":
+        # 개별 defect 필터링 또는 Cable 호환
+        if train_filter_id is not None:
+            orig_data = filter_coco_by_category(orig_data, train_filter_id, train_remap)
+        elif category == "Cable":
             orig_data = filter_coco_by_category(orig_data, 1, {1: 0})
         orig_imgs, orig_anns = _sample_images_per_class(
             orig_data, cat_info["train_images"], n_original_per_class, seed
@@ -301,7 +307,9 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     # GenAI 데이터 (클래스당 균형 샘플링)
     if n_genai_per_class > 0 and cat_info["genai_ann"].exists():
         genai_data = load_coco(cat_info["genai_ann"])
-        if category == "Cable":
+        if train_filter_id is not None:
+            genai_data = filter_coco_by_category(genai_data, train_filter_id, train_remap)
+        elif category == "Cable":
             genai_data = filter_coco_by_category(genai_data, 1, {1: 0})
         genai_imgs, genai_anns = _sample_images_per_class(
             genai_data, cat_info["genai_images"], n_genai_per_class, seed + 1
@@ -316,7 +324,9 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     _trad_per_class = n_traditional_per_class > 0
     if _n_trad > 0 and cat_info["trad_ann"].exists():
         trad_data = load_coco(cat_info["trad_ann"])
-        if category == "Cable":
+        if train_filter_id is not None:
+            trad_data = filter_coco_by_category(trad_data, train_filter_id, train_remap)
+        elif category == "Cable":
             trad_data = filter_coco_by_category(trad_data, 1, {1: 0})
         if _trad_per_class:
             trad_imgs, trad_anns = _sample_images_per_class(
