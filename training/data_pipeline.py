@@ -249,8 +249,12 @@ def prepare_dataset(experiment: str, condition: str, category: str,
 
     Returns: 병합된 데이터셋 디렉토리 경로
     """
-    if category == "Unified":
-        return prepare_unified_dataset(experiment, condition, seed, force)
+    cat_info = get_category_info(category)
+
+    # subcategories가 있는 통합 카테고리 (Unified, Exp2_3cls 등)
+    if cat_info.get("subcategories"):
+        return prepare_unified_dataset(experiment, condition, seed, force,
+                                       unified_info=cat_info, category_name=category)
 
     cat_info = get_category_info(category)
     exp_info = get_experiment_info(experiment)
@@ -352,9 +356,12 @@ def prepare_dataset(experiment: str, condition: str, category: str,
 
 
 def prepare_unified_dataset(experiment: str, condition: str,
-                            seed: int = 42, force: bool = False) -> Path:
-    """6개 카테고리를 하나의 14클래스 통합 데이터셋으로 병합"""
-    unified_info = get_category_info("Unified")
+                            seed: int = 42, force: bool = False,
+                            unified_info: dict = None,
+                            category_name: str = "Unified") -> Path:
+    """통합 카테고리(Unified, Exp2_3cls 등)를 하나의 다클래스 데이터셋으로 병합"""
+    if unified_info is None:
+        unified_info = get_category_info("Unified")
     exp_info = get_experiment_info(experiment)
 
     if condition not in exp_info["conditions"]:
@@ -364,7 +371,7 @@ def prepare_unified_dataset(experiment: str, condition: str,
         )
 
     params = exp_info["conditions"][condition]
-    out_dir = get_merged_dir(experiment, condition, "Unified", seed=seed)
+    out_dir = get_merged_dir(experiment, condition, category_name, seed=seed)
 
     if not force and (out_dir / "annotations.json").exists():
         data = load_coco(out_dir / "annotations.json")
@@ -449,10 +456,12 @@ def prepare_unified_dataset(experiment: str, condition: str,
     return out_dir
 
 
-def prepare_unified_val_dataset() -> Tuple[Path, Path]:
-    """6개 카테고리의 val 데이터를 14클래스 통합 val 데이터셋으로 병합"""
-    unified_info = get_category_info("Unified")
-    val_dir = MERGED_DIR / "_unified_val"
+def prepare_unified_val_dataset(unified_info: dict = None,
+                                category_name: str = "Unified") -> Tuple[Path, Path]:
+    """통합 카테고리의 val 데이터를 다클래스 val 데이터셋으로 병합"""
+    if unified_info is None:
+        unified_info = get_category_info("Unified")
+    val_dir = MERGED_DIR / f"_{category_name.lower()}_val"
     val_ann_path = val_dir / "annotations.json"
     val_images_dir = val_dir / "images"
 
@@ -653,8 +662,11 @@ def prepare_val_dataset(category: str) -> Tuple[Path, Path]:
     Val 데이터셋 준비 (필요 시 필터링 후 임시 저장).
     Returns: (val_images_dir, val_ann_path)
     """
-    if category == "Unified":
-        return prepare_unified_val_dataset()
+    cat_info = get_category_info(category)
+
+    # subcategories가 있는 통합 카테고리 (Unified, Exp2_3cls 등)
+    if cat_info.get("subcategories"):
+        return prepare_unified_val_dataset(unified_info=cat_info, category_name=category)
 
     cat_info = get_category_info(category)
     val_ann = cat_info["val_ann"]
