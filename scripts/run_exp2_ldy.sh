@@ -1,7 +1,6 @@
 #!/bin/bash
 # ============================================================
-# [임대윤] 실험2 Phase2: cond4_8x~10x × solov2, rtmdet_ins
-# 3개 defect를 하나의 3클래스 모델로 학습
+# [임대윤] 실험2: cond4_7x~10x × 7종 모델
 # 사용법: bash scripts/run_exp2_ldy.sh <GPU>
 # ============================================================
 set -e
@@ -9,9 +8,9 @@ cd /home/jjh0709/gitrepo/VISION-Instance-Seg
 mkdir -p results/logs
 
 GPU=${1:?사용법: $0 <GPU번호>}
-CATEGORY="Exp2_3cls"  # Inclusoes + Dirty + impurities (3클래스)
-MODELS=("solov2" "rtmdet_ins")
-CONDITIONS=("cond4_8x" "cond4_9x" "cond4_10x")
+CATEGORY="Exp2_3cls"
+MODELS=("mask_rcnn" "cascade_mask_rcnn" "maskdino" "mask2former" "cascade_rcnn" "solov2" "rtmdet_ins")
+CONDITIONS=("cond4_7x" "cond4_8x" "cond4_9x" "cond4_10x")
 
 TOTAL=$((${#MODELS[@]} * ${#CONDITIONS[@]}))
 COUNT=0

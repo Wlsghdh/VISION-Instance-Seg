@@ -1,7 +1,6 @@
 #!/bin/bash
 # ============================================================
-# [주진호] 실험2 Phase1(cond1~3) + Phase2(cond4_5x~7x)
-# 3개 defect를 하나의 3클래스 모델로 학습
+# [주진호] 실험2: Phase1(cond1~3 × 2종) + cond4_4x~6x × 7종 모델
 # 사용법: bash scripts/run_exp2_jjh.sh <GPU>
 # ============================================================
 set -e
@@ -9,7 +8,7 @@ cd /home/jjh0709/gitrepo/VISION-Instance-Seg
 mkdir -p results/logs
 
 GPU=${1:?사용법: $0 <GPU번호>}
-CATEGORY="Exp2_3cls"  # Inclusoes + Dirty + impurities (3클래스)
+CATEGORY="Exp2_3cls"
 
 echo "===== [주진호] exp2 시작 $(date) ====="
 echo "GPU: $GPU, Category: $CATEGORY"
@@ -35,11 +34,11 @@ for cond in "${PHASE1_CONDS[@]}"; do
   done
 done
 
-# --- Phase 2: cond4_5x~7x (2종 모델) ---
+# --- Phase 2: cond4_4x~6x (7종 모델) ---
 echo ""
-echo "========== Phase 2: cond4_5x~7x =========="
-PHASE2_MODELS=("cascade_mask_rcnn" "cascade_rcnn")
-PHASE2_CONDS=("cond4_5x" "cond4_6x" "cond4_7x")
+echo "========== Phase 2: cond4_4x~6x =========="
+PHASE2_MODELS=("mask_rcnn" "cascade_mask_rcnn" "maskdino" "mask2former" "cascade_rcnn" "solov2" "rtmdet_ins")
+PHASE2_CONDS=("cond4_4x" "cond4_5x" "cond4_6x")
 P2_TOTAL=$((${#PHASE2_MODELS[@]} * ${#PHASE2_CONDS[@]}))
 P2_COUNT=0
 

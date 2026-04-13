@@ -1,7 +1,6 @@
 #!/bin/bash
 # ============================================================
-# [양진우] 실험2 Phase2: cond4_1x~4x × mask_rcnn, maskdino, mask2former
-# 3개 defect를 하나의 3클래스 모델로 학습
+# [양진우] 실험2: cond4_1x~3x × 7종 모델
 # 사용법: bash scripts/run_exp2_yjw.sh <GPU>
 # ============================================================
 set -e
@@ -9,9 +8,9 @@ cd /home/jjh0709/gitrepo/VISION-Instance-Seg
 mkdir -p results/logs
 
 GPU=${1:?사용법: $0 <GPU번호>}
-CATEGORY="Exp2_3cls"  # Inclusoes + Dirty + impurities (3클래스)
-MODELS=("mask_rcnn" "maskdino" "mask2former")
-CONDITIONS=("cond4_1x" "cond4_2x" "cond4_3x" "cond4_4x")
+CATEGORY="Exp2_3cls"
+MODELS=("mask_rcnn" "cascade_mask_rcnn" "maskdino" "mask2former" "cascade_rcnn" "solov2" "rtmdet_ins")
+CONDITIONS=("cond4_1x" "cond4_2x" "cond4_3x")
 
 TOTAL=$((${#MODELS[@]} * ${#CONDITIONS[@]}))
 COUNT=0

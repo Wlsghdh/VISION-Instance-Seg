@@ -272,7 +272,7 @@ EXPERIMENTS = {
     },
     "exp2": {
         "description": "전통 vs GenAI 비교 + (원본+GenAI)+전통 N배 탐색",
-        "models": ["mask_rcnn", "cascade_mask_rcnn"],
+        "models": list(MODELS.keys()),  # Phase1은 2종, Phase2(cond4)는 7종 전부
         "conditions": {
             # Phase 1: 전통 vs GenAI (2종 모델)
             "cond1": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},       # baseline
