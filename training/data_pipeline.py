@@ -398,11 +398,20 @@ def prepare_unified_dataset(experiment: str, condition: str,
 
         print(f"\n  [{subcat_name}] offset={offset}, classes={subcat_info['classes']}")
 
+        # 개별 defect 필터링 설정
+        _filter_id = subcat_info.get("train_filter_category_id")
+        _filter_remap = subcat_info.get("train_category_remap")
+        if _filter_id is None and subcat_name == "Cable":
+            _filter_id, _filter_remap = 1, {1: 0}
+
+        def _apply_filter(data):
+            if _filter_id is not None:
+                return filter_coco_by_category(data, _filter_id, _filter_remap)
+            return data
+
         # 원본 데이터 (클래스별 균형 샘플링)
         if subcat_info["train_ann"] and subcat_info["train_ann"].exists():
-            orig_data = load_coco(subcat_info["train_ann"])
-            if subcat_name == "Cable":
-                orig_data = filter_coco_by_category(orig_data, 1, {1: 0})
+            orig_data = _apply_filter(load_coco(subcat_info["train_ann"]))
             orig_imgs, orig_anns = _sample_images_per_class(
                 orig_data, subcat_info["train_images"], n_original_per_class, seed
             )
@@ -415,9 +424,7 @@ def prepare_unified_dataset(experiment: str, condition: str,
 
         # GenAI 데이터
         if n_genai_per_class > 0 and subcat_info["genai_ann"] and subcat_info["genai_ann"].exists():
-            genai_data = load_coco(subcat_info["genai_ann"])
-            if subcat_name == "Cable":
-                genai_data = filter_coco_by_category(genai_data, 1, {1: 0})
+            genai_data = _apply_filter(load_coco(subcat_info["genai_ann"]))
             genai_imgs, genai_anns = _sample_images_per_class(
                 genai_data, subcat_info["genai_images"], n_genai_per_class, seed + 1
             )
@@ -432,9 +439,7 @@ def prepare_unified_dataset(experiment: str, condition: str,
         _n_trad = n_traditional_per_class if n_traditional_per_class > 0 else n_traditional
         _trad_per_class = n_traditional_per_class > 0
         if _n_trad > 0 and subcat_info["trad_ann"] and subcat_info["trad_ann"].exists():
-            trad_data = load_coco(subcat_info["trad_ann"])
-            if subcat_name == "Cable":
-                trad_data = filter_coco_by_category(trad_data, 1, {1: 0})
+            trad_data = _apply_filter(load_coco(subcat_info["trad_ann"]))
             if _trad_per_class:
                 trad_imgs, trad_anns = _sample_images_per_class(
                     trad_data, subcat_info["trad_images"], n_traditional_per_class, seed + 2
