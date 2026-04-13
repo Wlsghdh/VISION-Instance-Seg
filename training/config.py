@@ -175,32 +175,32 @@ EXPERIMENTS = {
         "description": "생성AI 증강 수에 따른 성능 변화 (클래스당 0~125장)",
         "models": ["mask_rcnn", "cascade_mask_rcnn"],
         "conditions": {
-            "baseline":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 0},
-            "genai_25":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 25,  "n_traditional": 0},
-            "genai_50":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 50,  "n_traditional": 0},
-            "genai_75":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 75,  "n_traditional": 0},
-            "genai_100":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 100, "n_traditional": 0},
-            "genai_125":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 0},
+            "baseline":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},
+            "genai_25":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 25,  "n_traditional_per_class": 0},
+            "genai_50":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 50,  "n_traditional_per_class": 0},
+            "genai_75":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 75,  "n_traditional_per_class": 0},
+            "genai_100":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 100, "n_traditional_per_class": 0},
+            "genai_125":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 0},
         },
     },
     "exp2": {
-        "description": "전통적 증강 vs 생성형 AI 증강 비교",
+        "description": "전통적 증강 vs 생성형 AI 증강 비교 (per-class 단위)",
         "models": ["mask_rcnn", "cascade_mask_rcnn", "maskdino"],
         "conditions": {
-            "cond1": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 0},
-            "cond2": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 250},
-            "cond3": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 0},
-            "cond4": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 250},
-            "cond5": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 2750},
+            "cond1": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},       # baseline
+            "cond2": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 125},     # 전통 125/cls (GenAI 분량과 동일)
+            "cond3": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 0},       # GenAI 125/cls
+            "cond4": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 200},     # GenAI 125 + 전통 200/cls (원본×10)
+            "cond5": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1250},    # GenAI 125 + 전통 1250/cls (GenAI×10)
         },
     },
     "exp3": {
-        "description": "7종 모델 비교",
+        "description": "7종 모델 비교 (per-class 단위)",
         "models": list(MODELS.keys()),
         "conditions": {
-            "original_only":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 0},      # 원본 클래스당 20장만
-            "with_trad":       {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional": 3000},    # 원본 20/cls + 전통 3000
-            "with_genai_trad": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional": 2750},    # 원본 20/cls + genai 125/cls + 전통 2750
+            "original_only":   {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},       # 원본 20/cls
+            "with_trad":       {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 1450},    # 원본 20/cls + 전통 1450/cls = (20+125)×10
+            "with_genai_trad": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1450},    # 원본 20/cls + genai 125/cls + 전통 1450/cls
         },
     },
 }

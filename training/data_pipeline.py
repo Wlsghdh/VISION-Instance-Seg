@@ -280,7 +280,9 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     sources = []
     n_original_per_class = params["n_original_per_class"]
     n_genai_per_class = params["n_genai_per_class"]
-    n_traditional = params["n_traditional"]
+    # n_traditional_per_class (신규) 또는 n_traditional (구 호환) 지원
+    n_traditional_per_class = params.get("n_traditional_per_class", 0)
+    n_traditional = params.get("n_traditional", 0)
 
     # 원본 데이터 (클래스별 균형 샘플링)
     if cat_info["train_ann"].exists():
@@ -309,15 +311,23 @@ def prepare_dataset(experiment: str, condition: str, category: str,
     elif n_genai_per_class > 0:
         print(f"  [WARN] GenAI 없음: {cat_info['genai_ann']}")
 
-    # 전통 증강 데이터
-    if n_traditional > 0 and cat_info["trad_ann"].exists():
+    # 전통 증강 데이터 (per-class 또는 절대값)
+    _n_trad = n_traditional_per_class if n_traditional_per_class > 0 else n_traditional
+    _trad_per_class = n_traditional_per_class > 0
+    if _n_trad > 0 and cat_info["trad_ann"].exists():
         trad_data = load_coco(cat_info["trad_ann"])
         if category == "Cable":
             trad_data = filter_coco_by_category(trad_data, 1, {1: 0})
-        trad_imgs, trad_anns = _sample_images(trad_data, cat_info["trad_images"], n_traditional, seed + 2)
-        print(f"  전통증강: {len(trad_imgs)}장")
+        if _trad_per_class:
+            trad_imgs, trad_anns = _sample_images_per_class(
+                trad_data, cat_info["trad_images"], n_traditional_per_class, seed + 2
+            )
+            print(f"  전통증강: {len(trad_imgs)}장 (클래스당 {n_traditional_per_class}장 목표)")
+        else:
+            trad_imgs, trad_anns = _sample_images(trad_data, cat_info["trad_images"], n_traditional, seed + 2)
+            print(f"  전통증강: {len(trad_imgs)}장")
         sources.append((cat_info["trad_images"], trad_imgs, trad_anns))
-    elif n_traditional > 0:
+    elif _n_trad > 0:
         print(f"  [WARN] 전통증강 없음: {cat_info['trad_ann']}")
 
     # 병합
@@ -361,7 +371,8 @@ def prepare_unified_dataset(experiment: str, condition: str,
     global_id_offset = unified_info["global_id_offset"]
     n_original_per_class = params["n_original_per_class"]
     n_genai_per_class = params["n_genai_per_class"]
-    n_traditional = params["n_traditional"]
+    n_traditional_per_class = params.get("n_traditional_per_class", 0)
+    n_traditional = params.get("n_traditional", 0)
 
     for subcat_name in unified_info["subcategories"]:
         subcat_info = get_category_info(subcat_name)
@@ -400,19 +411,26 @@ def prepare_unified_dataset(experiment: str, condition: str,
         elif n_genai_per_class > 0:
             print(f"    [WARN] GenAI 없음: {subcat_info['genai_ann']}")
 
-        # 전통 증강 데이터
-        if n_traditional > 0 and subcat_info["trad_ann"] and subcat_info["trad_ann"].exists():
+        # 전통 증강 데이터 (per-class 또는 절대값)
+        _n_trad = n_traditional_per_class if n_traditional_per_class > 0 else n_traditional
+        _trad_per_class = n_traditional_per_class > 0
+        if _n_trad > 0 and subcat_info["trad_ann"] and subcat_info["trad_ann"].exists():
             trad_data = load_coco(subcat_info["trad_ann"])
             if subcat_name == "Cable":
                 trad_data = filter_coco_by_category(trad_data, 1, {1: 0})
-            trad_imgs, trad_anns = _sample_images(
-                trad_data, subcat_info["trad_images"], n_traditional, seed + 2
-            )
+            if _trad_per_class:
+                trad_imgs, trad_anns = _sample_images_per_class(
+                    trad_data, subcat_info["trad_images"], n_traditional_per_class, seed + 2
+                )
+            else:
+                trad_imgs, trad_anns = _sample_images(
+                    trad_data, subcat_info["trad_images"], n_traditional, seed + 2
+                )
             _remap_category_ids(trad_anns, local_to_global)
             _prefix_filenames(trad_imgs, subcat_name)
-            print(f"    전통증강: {len(trad_imgs)}장")
+            print(f"    전통증강: {len(trad_imgs)}장" + (f" (클래스당 {n_traditional_per_class}장 목표)" if _trad_per_class else ""))
             sources.append((subcat_info["trad_images"], trad_imgs, trad_anns))
-        elif n_traditional > 0:
+        elif _n_trad > 0:
             print(f"    [WARN] 전통증강 없음: {subcat_info['trad_ann']}")
 
     # 통합 병합
