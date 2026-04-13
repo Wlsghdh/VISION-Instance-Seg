@@ -278,17 +278,17 @@ EXPERIMENTS = {
             "cond1": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},       # baseline
             "cond2": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 125},     # 전통 125/cls
             "cond3": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 0},       # GenAI 125/cls
-            # Phase 2: cond4 (원본25+GenAI125)+전통N배 — (25+125)×N = 150×N per class (7종 모델)
-            "cond4_1x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 150},
-            "cond4_2x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 300},
-            "cond4_3x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 450},
-            "cond4_4x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 600},
-            "cond4_5x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 750},
-            "cond4_6x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 900},
-            "cond4_7x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 1050},
-            "cond4_8x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 1200},
-            "cond4_9x":  {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 1350},
-            "cond4_10x": {"n_original_per_class": 25, "n_genai_per_class": 125, "n_traditional_per_class": 1500},
+            # Phase 2: cond4 (원본20+GenAI125)+전통N배 — (20+125)×N = 145×N per class (7종 모델)
+            "cond4_1x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 145},
+            "cond4_2x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 290},
+            "cond4_3x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 435},
+            "cond4_4x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 580},
+            "cond4_5x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 725},
+            "cond4_6x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 870},
+            "cond4_7x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1015},
+            "cond4_8x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1160},
+            "cond4_9x":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1305},
+            "cond4_10x": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 1450},
         },
     },
 }
