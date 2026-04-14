@@ -101,11 +101,12 @@ class MMDetAdapter(ModelAdapter):
 
         cfg.test_dataloader = cfg.val_dataloader.copy()
 
-        # 평가 설정
+        # 평가 설정 (SOLOv2는 mask-only → bbox 평가 제외)
+        eval_metric = ["segm"] if self.model_name == "solov2" else ["bbox", "segm"]
         cfg.val_evaluator = dict(
             type="CocoMetric",
             ann_file=str(val_ann_path),
-            metric=["bbox", "segm"],
+            metric=eval_metric,
             classwise=True,
         )
         cfg.test_evaluator = cfg.val_evaluator.copy()
