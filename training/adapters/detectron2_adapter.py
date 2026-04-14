@@ -259,8 +259,27 @@ class Detectron2Adapter(ModelAdapter):
         cfg.DATASETS.TEST = (self.val_dataset_name,)
 
         batch_size = hyperparams.get("batch_size", 2)
+
+        # MaskDINO/Mask2Former는 트랜스포머 기반이라 메모리 소비가 큼
+        # batch_size를 줄이고 AMP를 켜서 OOM 방지
+        if self.model_name in ("maskdino", "mask2former"):
+            batch_size = min(batch_size, 2)
+            cfg.SOLVER.AMP.ENABLED = True
+            # 이미지 크기도 줄여서 메모리 절약
+            cfg.INPUT.MIN_SIZE_TRAIN = (480, 512, 544, 576, 608, 640)
+            cfg.INPUT.MAX_SIZE_TRAIN = 800
+            cfg.INPUT.MIN_SIZE_TEST = 640
+            cfg.INPUT.MAX_SIZE_TEST = 800
+            print(f"  [{self.model_name}] batch_size={batch_size}, AMP=True, max_size=800 (메모리 절약)")
+
         cfg.SOLVER.IMS_PER_BATCH = batch_size
-        cfg.SOLVER.BASE_LR = hyperparams.get("lr", 1e-4)
+        # lr도 batch_size에 비례 조정 (Linear Scaling Rule)
+        base_lr = hyperparams.get("lr", 1e-4)
+        orig_batch = hyperparams.get("batch_size", 2)
+        if batch_size != orig_batch:
+            base_lr = base_lr * batch_size / orig_batch
+            print(f"  LR 조정: {hyperparams.get('lr')} → {base_lr} (batch {orig_batch}→{batch_size})")
+        cfg.SOLVER.BASE_LR = base_lr
 
         # 에폭→이터레이션 변환
         from training.data_pipeline import load_coco
@@ -313,6 +332,7 @@ class Detectron2Adapter(ModelAdapter):
         cfg.INPUT.MIN_SIZE_TEST = min_size[-1] if isinstance(min_size, (list, tuple)) else min_size
         cfg.INPUT.MAX_SIZE_TEST = max_size
 
+        output_dir = Path(output_dir)
         cfg.OUTPUT_DIR = str(output_dir)
         cfg.SEED = hyperparams.get("seed", 42)
 
