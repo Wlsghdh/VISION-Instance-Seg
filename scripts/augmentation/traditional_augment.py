@@ -38,9 +38,12 @@ from tqdm import tqdm
 # 카테고리 설정
 # ============================================================
 CATEGORY_CONFIG = {
-    "Cable":   {"keep_category": "thunderbolt", "keep_id": 1},
-    "Screw":   {"keep_category": "defect",      "keep_id": 0},  # Screw defect = id 0
-    "Casting": {"keep_category": None,          "keep_id": None},  # Inclusoes(0)+Rechupe(1) 전체 유지
+    "Cable":    {"keep_category": "thunderbolt", "keep_id": 1},
+    "Screw":    {"keep_category": "defect",      "keep_id": 0},
+    "Casting":  {"keep_category": None,          "keep_id": None},  # Inclusoes(0)+Rechupe(1) 전체
+    "Console":  {"keep_category": None,          "keep_id": None},  # Collision/Dirty/Gap/Scratch 전체
+    "Cylinder": {"keep_category": None,          "keep_id": None},  # Chip/PistonMiss/Porosity/RCS 전체
+    "Wood":     {"keep_category": None,          "keep_id": None},  # impurities/pits 전체
 }
 
 
@@ -227,12 +230,23 @@ def run_augmentation(category, n_augment, seed,
     BASE = Path('/home/jjh0709/gitrepo/VISION-Instance-Seg')
 
     if input_dir is None:
-        IMAGES_DIR = BASE / 'data' / category / 'train' / 'images'
+        # 카테고리별 디렉토리 구조 자동 감지
+        train_dir = BASE / 'data' / category / 'train'
+        if (train_dir / 'images').exists():
+            IMAGES_DIR = train_dir / 'images'
+        else:
+            IMAGES_DIR = train_dir  # 이미지가 train/ 직접 저장
     else:
         IMAGES_DIR = Path(input_dir)
 
     if ann_file is None:
-        ANN_FILE = BASE / 'data' / category / 'train' / 'annotations.json'
+        train_dir = BASE / 'data' / category / 'train'
+        if (train_dir / 'annotations.json').exists():
+            ANN_FILE = train_dir / 'annotations.json'
+        elif (train_dir / '_annotations.coco.json').exists():
+            ANN_FILE = train_dir / '_annotations.coco.json'
+        else:
+            raise FileNotFoundError(f"No annotation file found in {train_dir}")
     else:
         ANN_FILE = Path(ann_file)
 
@@ -402,8 +416,8 @@ def main():
         """
     )
     parser.add_argument('--category', type=str, required=True,
-                        choices=['Cable', 'Screw', 'Casting'],
-                        help='대상 카테고리 (Cable / Screw / Casting) — 카테고리 ID 필터에 사용')
+                        choices=['Cable', 'Screw', 'Casting', 'Console', 'Cylinder', 'Wood'],
+                        help='대상 카테고리 — 카테고리 ID 필터에 사용')
     parser.add_argument('--n_augment', type=int, default=2750,
                         help='생성할 증강 이미지 수 (기본: 2750)')
     parser.add_argument('--seed', type=int, default=42,
