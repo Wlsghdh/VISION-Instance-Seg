@@ -247,6 +247,14 @@ def main():
 
     # 하이퍼파라미터 오버라이드
     parser.add_argument('--max-epochs', type=int, default=None)
+    parser.add_argument('--max-iters', type=int, default=None,
+                        help='[iter 모드] 최대 iteration 수. 지정 시 epoch 모드 무시')
+    parser.add_argument('--warmup-iters', type=int, default=None)
+    parser.add_argument('--eval-period-iters', type=int, default=None)
+    parser.add_argument('--checkpoint-period-iters', type=int, default=None)
+    parser.add_argument('--lr-scheduler', type=str, default=None,
+                        choices=[None, 'cosine', 'step'],
+                        help='LR scheduler 종류 (cosine 권장 for iter 모드)')
     parser.add_argument('--lr', type=float, default=None)
     parser.add_argument('--batch-size', type=int, default=None)
     parser.add_argument('--seed', type=int, default=None)
@@ -266,6 +274,16 @@ def main():
     cli_overrides = {}
     if args.max_epochs is not None:
         cli_overrides["max_epochs"] = args.max_epochs
+    if args.max_iters is not None:
+        cli_overrides["max_iters"] = args.max_iters
+    if args.warmup_iters is not None:
+        cli_overrides["warmup_iters"] = args.warmup_iters
+    if args.eval_period_iters is not None:
+        cli_overrides["eval_period_iters"] = args.eval_period_iters
+    if args.checkpoint_period_iters is not None:
+        cli_overrides["checkpoint_period_iters"] = args.checkpoint_period_iters
+    if args.lr_scheduler is not None:
+        cli_overrides["lr_scheduler"] = args.lr_scheduler
     if args.lr is not None:
         cli_overrides["lr"] = args.lr
     if args.batch_size is not None:

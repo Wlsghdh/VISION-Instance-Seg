@@ -270,6 +270,19 @@ EXPERIMENTS = {
             "genai_125":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 0},
         },
     },
+    "exp1_3cls": {
+        "description": "Exp1 3클래스 축소판 (Dirty/Inclusoes/impurities) — iter 기반 공정 비교",
+        "models": ["mask_rcnn", "cascade_mask_rcnn"],
+        "categories": ["Exp2_3cls"],
+        "conditions": {
+            "baseline":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 0,   "n_traditional_per_class": 0},
+            "genai_25":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 25,  "n_traditional_per_class": 0},
+            "genai_50":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 50,  "n_traditional_per_class": 0},
+            "genai_75":  {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 75,  "n_traditional_per_class": 0},
+            "genai_100": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 100, "n_traditional_per_class": 0},
+            "genai_125": {"n_original_per_class": N_ORIGINAL_TRAIN_PER_CLASS, "n_genai_per_class": 125, "n_traditional_per_class": 0},
+        },
+    },
     "exp2": {
         "description": "전통 vs GenAI 비교 + (원본+GenAI)+전통 N배 탐색",
         "models": list(MODELS.keys()),  # Phase1은 2종, Phase2(cond4)는 7종 전부
@@ -297,22 +310,31 @@ EXPERIMENTS = {
 # 기본 하이퍼파라미터
 # ============================================================
 DEFAULT_HYPERPARAMS = {
-    # 실험 1 통일 하이퍼파라미터 (exp1_config.md 기준)
-    # 에폭 기반 학습 (early stopping이 자동 종료)
+    # === iter 기반 (우선 사용 — exp1_3cls 등 공정 비교 실험) ===
+    # iter 필드가 None이 아니면 epoch 필드보다 우선 적용됨 (detectron2_adapter)
+    "max_iters": None,                     # 예: 20000. None이면 epoch 모드
+    "warmup_iters": None,                  # 예: 500
+    "eval_period_iters": None,             # 예: 500
+    "checkpoint_period_iters": None,       # 예: 2000
+    "lr_scheduler": "step",                # "step" or "cosine" (cosine은 WarmupCosineLR)
+
+    # === epoch 기반 (기존 — 하위호환) ===
     "max_epochs": 1000,                    # early stopping에 맡기고 넉넉히
-    "lr": 0.0015,                          # Linear Scaling Rule(0.02*12/16=0.015) + fine-tuning 1/10 보정
-    "batch_size": 12,                      # A100 80GB GPU 활용률 개선 + gradient 안정
-    "seed": 42,                            # 3회 반복 시 42, 43, 44 사용
     "warmup_epochs": 5,                    # 학습 초반 lr 점진 상승
     "eval_period_epochs": 5,               # 5 에폭마다 평가
     "checkpoint_period_epochs": 50,        # 디스크 절약 (체크포인트 1개 ≈ 548MB)
-    "max_periodic_checkpoints": 1,         # 주기 체크포인트 rotation (최신 N개만 유지, model_best/model_final은 영향 없음)
+
+    # === 공통 ===
+    "lr": 0.0015,                          # Linear Scaling Rule(0.02*12/16=0.015) + fine-tuning 1/10 보정
+    "batch_size": 12,                      # A100 80GB GPU 활용률 개선 + gradient 안정
+    "seed": 42,                            # 3회 반복 시 42, 43, 44 사용
+    "max_periodic_checkpoints": 1,         # 주기 체크포인트 rotation (최신 N개만 유지)
     "input_min_size": (640, 672, 704, 736, 768, 800),  # detectron2 기본값
     "input_max_size": 1333,                # 고해상도 유지, 작은 결함 보존
-    # Early stopping
-    "early_stopping_patience": 15,         # 15 * 5 = 75 에폭 동안 개선 없으면 중단
+    # Early stopping (단위: eval 횟수. iter 모드에선 patience × eval_period_iters 동안 미개선)
+    "early_stopping_patience": 15,         # epoch 모드: 15*5=75 epoch / iter 모드: 15*500=7500 iter
     "early_stopping_metric": "segm/AP",    # instance segmentation mAP
-    # LR Decay (Step LR, 학습 길이의 70%/90% 지점)
+    # LR Decay (Step LR, 학습 길이의 70%/90% 지점) — step scheduler 전용
     "lr_decay_steps": (0.7, 0.9),          # lr → lr/10 → lr/100
 }
 

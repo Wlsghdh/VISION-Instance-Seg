@@ -281,35 +281,51 @@ class Detectron2Adapter(ModelAdapter):
             print(f"  LR 조정: {hyperparams.get('lr')} → {base_lr} (batch {orig_batch}→{batch_size})")
         cfg.SOLVER.BASE_LR = base_lr
 
-        # 에폭→이터레이션 변환
+        # 데이터 정보 (로그용)
         from training.data_pipeline import load_coco
         train_data = load_coco(train_ann_path)
         n_train_images = len(train_data["images"])
         self.iters_per_epoch = max(1, math.ceil(n_train_images / batch_size))
 
-        max_epochs = hyperparams.get("max_epochs", 300)
-        max_iter = max_epochs * self.iters_per_epoch
+        # iter 기반 모드 우선 — 지정되면 epoch 환산 우회
+        max_iters_cli = hyperparams.get("max_iters")
+        iter_mode = max_iters_cli is not None
+
+        if iter_mode:
+            max_iter = int(max_iters_cli)
+            warmup_iters = int(hyperparams.get("warmup_iters") or 500)
+            eval_period = int(hyperparams.get("eval_period_iters") or 500)
+            ckpt_period = int(hyperparams.get("checkpoint_period_iters") or 2000)
+            print(f"  [ITER 모드] max_iters={max_iter}, warmup={warmup_iters}, eval_period={eval_period}")
+        else:
+            max_epochs = hyperparams.get("max_epochs", 300)
+            max_iter = max_epochs * self.iters_per_epoch
+            warmup_iters = hyperparams.get("warmup_epochs", 5) * self.iters_per_epoch
+            eval_period_epochs = hyperparams.get("eval_period_epochs", 5)
+            eval_period = eval_period_epochs * self.iters_per_epoch
+            ckpt_period = hyperparams.get("checkpoint_period_epochs", 10) * self.iters_per_epoch
+            print(f"  [EPOCH 모드] max_epochs={max_epochs} ({max_iter} iters), eval_period={eval_period_epochs}ep ({eval_period} iters)")
+
         cfg.SOLVER.MAX_ITER = max_iter
-
-        warmup_epochs = hyperparams.get("warmup_epochs", 5)
-        cfg.SOLVER.WARMUP_ITERS = warmup_epochs * self.iters_per_epoch
-
-        eval_period_epochs = hyperparams.get("eval_period_epochs", 5)
-        eval_period = eval_period_epochs * self.iters_per_epoch
+        cfg.SOLVER.WARMUP_ITERS = warmup_iters
         cfg.TEST.EVAL_PERIOD = eval_period
+        cfg.SOLVER.CHECKPOINT_PERIOD = ckpt_period
 
-        checkpoint_period_epochs = hyperparams.get("checkpoint_period_epochs", 10)
-        cfg.SOLVER.CHECKPOINT_PERIOD = checkpoint_period_epochs * self.iters_per_epoch
-
-        # 주기 체크포인트 rotation 개수 (디스크 쿼터 보호)
-        # model_final.pth는 fvcore가 자동 보호, model_best.pth는 커스텀 save라 rotation 영향 없음
+        # 주기 체크포인트 rotation 개수
         self._max_periodic_ckpts = hyperparams.get("max_periodic_checkpoints", 1)
 
-        # LR decay steps (config의 lr_decay_steps 비율 적용)
-        decay_steps = hyperparams.get("lr_decay_steps", (0.7, 0.9))
-        cfg.SOLVER.STEPS = tuple(int(max_iter * s) for s in decay_steps)
+        # LR scheduler 선택
+        lr_scheduler = hyperparams.get("lr_scheduler", "step")
+        if lr_scheduler == "cosine":
+            cfg.SOLVER.LR_SCHEDULER_NAME = "WarmupCosineLR"
+            cfg.SOLVER.STEPS = ()  # cosine은 STEPS 무시
+            print(f"  LR scheduler: WarmupCosineLR")
+        else:
+            decay_steps = hyperparams.get("lr_decay_steps", (0.7, 0.9))
+            cfg.SOLVER.STEPS = tuple(int(max_iter * s) for s in decay_steps)
+            print(f"  LR scheduler: WarmupMultiStepLR (steps={cfg.SOLVER.STEPS})")
 
-        # Early stopping 설정 저장
+        # Early stopping
         patience = hyperparams.get("early_stopping_patience", 15)
         es_metric = hyperparams.get("early_stopping_metric", "segm/AP")
         self.early_stopping_hook = EarlyStoppingHook(
@@ -320,9 +336,7 @@ class Detectron2Adapter(ModelAdapter):
         )
 
         print(f"  Train images: {n_train_images}, iters/epoch: {self.iters_per_epoch}")
-        print(f"  Max epochs: {max_epochs} ({max_iter} iters)")
-        print(f"  Eval every {eval_period_epochs} epochs ({eval_period} iters)")
-        print(f"  Early stopping patience: {patience} evals ({patience * eval_period_epochs} epochs)")
+        print(f"  Early stopping patience: {patience} evals ({patience * eval_period} iters)")
 
         cfg.INPUT.MASK_FORMAT = "polygon"
         min_size = hyperparams.get("input_min_size", (480, 512, 544, 576, 608, 640))
