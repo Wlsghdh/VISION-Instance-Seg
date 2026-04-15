@@ -1,8 +1,7 @@
 #!/bin/bash
 # ============================================================
 # [주진호] Exp1_3cls — iter 기반 공정 비교 (v2)
-#   조건: baseline / genai_75 / genai_125 (×2 모델)
-#   3-seed: baseline·genai_125 (variance 측정용)
+#   조건: baseline / genai_75 / genai_125 (×2 모델, seed=42 단일)
 #   사용법: bash scripts/run_exp1_3cls_jjh.sh <GPU>
 # ============================================================
 set -e
@@ -62,23 +61,12 @@ run_one() {
     sleep $COOLDOWN
 }
 
-# === Phase A: 단일 seed (3 conds × 2 models = 6 runs) ===
+# === 단일 seed: 3 conds × 2 models = 6 runs ===
 echo ""
-echo "========== Phase A: 단일 seed (seed=42) =========="
+echo "========== seed=42 단일 =========="
 for cond in baseline genai_75 genai_125; do
     for model in mask_rcnn cascade_mask_rcnn; do
         run_one "$cond" "$model" 42
-    done
-done
-
-# === Phase B: 추가 seed (baseline·genai_125 × 2 models × seed 43,44 = 8 runs) ===
-echo ""
-echo "========== Phase B: variance 측정 (seed 43, 44) =========="
-for cond in baseline genai_125; do
-    for model in mask_rcnn cascade_mask_rcnn; do
-        for seed in 43 44; do
-            run_one "$cond" "$model" "$seed"
-        done
     done
 done
 

@@ -81,13 +81,13 @@
 
 ## 3. 담당자 분배
 
-| 담당 | 조건 (×2 모델, seed=42 기본) | 3-seed 추가 | 총 학습 수 |
-|------|-----|-----|:---:|
-| **jjh** | baseline / genai_75 / genai_125 | baseline×2, genai_125×2 (seed 43,44, MRCNN/CMRCNN 각 1) | 6 + 4 = 10 |
-| **yjw** | genai_25 / genai_50 / genai_100 | (없음) | 6 |
+| 담당 | 조건 (×2 모델, seed=42 단일) | 총 학습 수 |
+|------|-----|:---:|
+| **jjh** | baseline / genai_75 / genai_125 | 6 |
+| **yjw** | genai_25 / genai_50 / genai_100 | 6 |
 
 - ldy는 제외
-- jjh 추가 부담은 variance 측정용 (baseline/genai_125만 3-seed)
+- **seed는 42 단일**로 고정 (variance 측정은 후속 실험으로 이관)
 
 ## 4. 구현 계획 (코드 수정 세부)
 
