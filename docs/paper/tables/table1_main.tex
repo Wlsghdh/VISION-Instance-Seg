@@ -1,0 +1,10 @@
+\begin{tabular}{llcccc}
+\toprule
+조건 & 구성 & Mask R-CNN $\uparrow$ & Cascade $\uparrow$ & $\Delta$ vs baseline (M/C) \\
+\midrule
+baseline & 원본 20/cls & 10.30 & 11.26 & — \\
++전통 125 & 원본 20 + 전통 125/cls & 8.54 & 10.36 & -1.76 / -0.89 \\
++GenAI 125 & 원본 20 + GenAI 125/cls & 12.18 & 11.78 & +1.89 / +0.53 \\
++GenAI+전통×6 & (원본 20 + GenAI 125) + 전통 870/cls & 13.08 & 15.90 & +2.79 / +4.64 \\
+\bottomrule
+\end{tabular}

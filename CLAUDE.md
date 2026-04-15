@@ -23,6 +23,16 @@
 
 ---
 
+## 📝 논문 작성 agent 활용
+
+- **`paper-references-manager`**: 참고문헌(BibTeX) 관리·인용 점검 → `docs/references/refs.bib`
+- **`paper-visualizer`**: 논문 figure/table 자동 생성 → `docs/paper/{figs,tables,scripts}/`
+- **`paper-doctor`**: 논문 story-line·문장·리뷰어 공격 시뮬레이션 (논문박사)
+
+논문 작업 시작 전 `docs/paper/visualization_pipeline.md` 와 `docs/result_summary_kcc_paper.md` 필독.
+
+---
+
 ## 프로젝트 개요
 
 - **프로젝트명**: VISION Instance Segmentation
