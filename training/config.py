@@ -225,6 +225,7 @@ MODELS = {
         "config": "maskdino_R50_bs16_50ep_4s_dowsample1_2048.yaml",
         "weights": "detectron2://ImageNetPretrained/torchvision/R-50.pkl",
         "requires_repo": "MaskDINO",
+        "hyperparams": {"lr": 1e-4, "batch_size": 4},  # AdamW fine-tuning (MaskDINO 기본값)
     },
     "mask2former": {
         "framework": "detectron2",
@@ -232,6 +233,7 @@ MODELS = {
         "config": "maskformer2_R50_bs16_50ep.yaml",
         "weights": "detectron2://ImageNetPretrained/torchvision/R-50.pkl",
         "requires_repo": "Mask2Former",
+        "hyperparams": {"lr": 1e-4, "batch_size": 4},  # AdamW fine-tuning (Mask2Former 기본값)
     },
     "cascade_rcnn": {
         "framework": "mmdet",

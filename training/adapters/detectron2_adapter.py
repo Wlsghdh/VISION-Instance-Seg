@@ -183,24 +183,11 @@ class Detectron2Adapter(ModelAdapter):
         sys.path.insert(0, str(MASK2FORMER_REPO))
         from detectron2.projects.deeplab import add_deeplab_config
 
-        # Mask2Former __init__이 데이터셋 중복 등록 오류를 발생시킴
-        # config와 모델만 직접 임포트
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "mask2former_config",
-            str(MASK2FORMER_REPO / "mask2former" / "config.py")
-        )
-        m2f_config = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m2f_config)
-        add_maskformer2_config = m2f_config.add_maskformer2_config
-
-        # 모델 등록을 위해 modeling 모듈도 임포트 (데이터셋 등록 안 함)
-        spec2 = importlib.util.spec_from_file_location(
-            "mask2former_model",
-            str(MASK2FORMER_REPO / "mask2former" / "maskformer_model.py")
-        )
-        m2f_model = importlib.util.module_from_spec(spec2)
-        spec2.loader.exec_module(m2f_model)
+        # mask2former의 config + modeling만 선택적 임포트
+        # data 모듈 건너뛰어 데이터셋 중복 등록 방지
+        from mask2former.config import add_maskformer2_config
+        import mask2former.modeling  # backbone/pixel_decoder 등록
+        from mask2former.maskformer_model import MaskFormer  # noqa: F401 — META_ARCH 등록
 
         cfg = d2['get_cfg']()
         add_deeplab_config(cfg)
