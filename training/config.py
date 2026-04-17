@@ -237,16 +237,22 @@ MODELS = {
         "framework": "mmdet",
         "display_name": "Cascade R-CNN",
         "config": "cascade-rcnn_r50_fpn_1x_coco.py",
+        "weights": "https://download.openmmlab.com/mmdetection/v2.0/cascade_rcnn/cascade_mask_rcnn_r50_fpn_1x_coco/cascade_mask_rcnn_r50_fpn_1x_coco_20200203-9d4dcb24.pth",
+        "hyperparams": {"lr": 1e-4, "batch_size": 4},  # AdamW fine-tuning
     },
     "solov2": {
         "framework": "mmdet",
         "display_name": "SOLOv2",
         "config": "solov2_r50_fpn_1x_coco.py",
+        "weights": "https://download.openmmlab.com/mmdetection/v2.0/solov2/solov2_r50_fpn_1x_coco/solov2_r50_fpn_1x_coco_20220512_125858-a357fa23.pth",
+        "hyperparams": {"lr": 1e-4, "batch_size": 4},
     },
     "rtmdet_ins": {
         "framework": "mmdet",
         "display_name": "RTMDet-Ins",
         "config": "rtmdet-ins_s_8xb32-300e_coco.py",
+        "weights": "https://download.openmmlab.com/mmdetection/v3.0/rtmdet/rtmdet-ins_s_8xb32-300e_coco/rtmdet-ins_s_8xb32-300e_coco_20221121_212604-fdc5d7ec.pth",
+        "hyperparams": {"lr": 1e-4, "batch_size": 4},
     },
 }
 
