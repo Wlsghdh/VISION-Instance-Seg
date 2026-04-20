@@ -3,7 +3,6 @@ DATALOADER:
   ASPECT_RATIO_GROUPING: true
   FILTER_EMPTY_ANNOTATIONS: true
   NUM_WORKERS: 4
-  REPEAT_SQRT: true
   REPEAT_THRESHOLD: 0.0
   SAMPLER_TRAIN: TrainingSampler
 DATASETS:
@@ -12,11 +11,10 @@ DATASETS:
   PROPOSAL_FILES_TEST: []
   PROPOSAL_FILES_TRAIN: []
   TEST:
-  - val_maskdino_139841511058960
+  - val_maskdino_135600965668240
   TRAIN:
-  - train_maskdino_139841511058960
+  - train_maskdino_135600965668240
 Default_loading: true
-FLOAT32_PRECISION: ''
 GLOBAL:
   HACK: 1.0
 INPUT:
@@ -66,7 +64,7 @@ MODEL:
       - 256
       - 512
   BACKBONE:
-    FREEZE_AT: 0
+    FREEZE_AT: 5
     NAME: build_resnet_backbone
   DEVICE: cuda
   FPN:
@@ -101,13 +99,13 @@ MODEL:
     GIOU_WEIGHT: 2.0
     HIDDEN_DIM: 256
     IMPORTANCE_SAMPLE_RATIO: 0.75
-    INITIALIZE_BOX_TYPE: 'no'
+    INITIALIZE_BOX_TYPE: mask2box
     INITIAL_PRED: true
     LEARN_TGT: false
     MASK_WEIGHT: 5.0
     NHEADS: 8
     NO_OBJECT_WEIGHT: 0.1
-    NUM_OBJECT_QUERIES: 300
+    NUM_OBJECT_QUERIES: 50
     OVERSAMPLE_RATIO: 3.0
     PANO_BOX_LOSS: false
     PRED_CONV: false
@@ -228,8 +226,6 @@ MODEL:
     CLS_AGNOSTIC_BBOX_REG: false
     CONV_DIM: 256
     FC_DIM: 1024
-    FED_LOSS_FREQ_WEIGHT_POWER: 0.5
-    FED_LOSS_NUM_CLASSES: 50
     NAME: ''
     NORM: ''
     NUM_CONV: 0
@@ -239,8 +235,6 @@ MODEL:
     POOLER_TYPE: ROIAlignV2
     SMOOTH_L1_BETA: 0.0
     TRAIN_ON_PRED_BOXES: false
-    USE_FED_LOSS: false
-    USE_SIGMOID_CE: false
   ROI_HEADS:
     BATCH_SIZE_PER_IMAGE: 512
     IN_FEATURES:
@@ -319,7 +313,6 @@ MODEL:
     COMMON_STRIDE: 4
     CONVS_DIM: 256
     DEFORMABLE_TRANSFORMER_ENCODER_IN_FEATURES:
-    - res2
     - res3
     - res4
     - res5
@@ -377,17 +370,16 @@ MODEL:
     QK_SCALE: null
     USE_CHECKPOINT: false
     WINDOW_SIZE: 7
-  WEIGHTS: detectron2://ImageNetPretrained/torchvision/R-50.pkl
-OUTPUT_DIR: /project/ahnailab/ldy1118/VISION-Instance-Seg/results/training/exp2/cond4_8x/Exp2_3cls/maskdino/seed42
+  WEIGHTS: /project/2026winter/ldy1118/checkpoints/maskdino/maskdino_r50_50ep_300q_hid2048_3sd1_instance_maskenhanced_mask46.3ap_box51.7ap.pth
+OUTPUT_DIR: /project/2026winter/ldy1118/VISION-Instance-Seg/results/training/exp2/cond4_8x/Exp2_3cls/maskdino/seed42_q50_fr
 SEED: 42
 SOLVER:
   AMP:
-    ENABLED: true
-  BACKBONE_MULTIPLIER: 0.1
+    ENABLED: false
+  BACKBONE_MULTIPLIER: 0.0
   BASE_LR: 5.0e-05
-  BASE_LR_END: 0.0
   BIAS_LR_FACTOR: 1.0
-  CHECKPOINT_PERIOD: 97850
+  CHECKPOINT_PERIOD: 2000
   CLIP_GRADIENTS:
     CLIP_TYPE: norm
     CLIP_VALUE: 0.01
@@ -395,21 +387,17 @@ SOLVER:
     NORM_TYPE: 2.0
   GAMMA: 0.1
   IMS_PER_BATCH: 2
-  LR_SCHEDULER_NAME: WarmupMultiStepLR
-  MAX_ITER: 391400
+  LR_SCHEDULER_NAME: WarmupCosineLR
+  MAX_ITER: 195800
   MOMENTUM: 0.9
   NESTEROV: false
-  NUM_DECAYS: 3
   OPTIMIZER: ADAMW
   POLY_LR_CONSTANT_ENDING: 0.0
   POLY_LR_POWER: 0.9
   REFERENCE_WORLD_SIZE: 0
-  RESCALE_INTERVAL: false
-  STEPS:
-  - 273980
-  - 352260
+  STEPS: []
   WARMUP_FACTOR: 1.0
-  WARMUP_ITERS: 9785
+  WARMUP_ITERS: 4000
   WARMUP_METHOD: linear
   WEIGHT_DECAY: 0.05
   WEIGHT_DECAY_BIAS: null
@@ -431,7 +419,7 @@ TEST:
     - 1100
     - 1200
   DETECTIONS_PER_IMAGE: 100
-  EVAL_PERIOD: 9785
+  EVAL_PERIOD: 1000
   EXPECTED_RESULTS: []
   KEYPOINT_OKS_SIGMAS: []
   PRECISE_BN:
