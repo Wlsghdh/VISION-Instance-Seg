@@ -231,9 +231,19 @@ MODELS = {
         "framework": "detectron2",
         "display_name": "Mask2Former",
         "config": "maskformer2_R50_bs16_50ep.yaml",
-        "weights": "detectron2://ImageNetPretrained/torchvision/R-50.pkl",
+        # Mask2Former COCO pretrained 전체 ckpt (R50 instance seg, 43.7 mask AP)
+        # ImageNet backbone만으론 3-class fine-tuning 수렴 불가(v1~v3 실패 입증)
+        "weights": "/project/ahnailab/yjw0619/seg/seg/VISION-Instance-Seg/checkpoints/mask2former/model_final_3c8ec9.pkl",
         "requires_repo": "Mask2Former",
-        "hyperparams": {"lr": 1e-4, "batch_size": 4},  # AdamW fine-tuning (Mask2Former 기본값)
+        # ldy1118 MaskDINO v3-lifeai 레시피 준용:
+        # lr=5e-5, cosine, AMP off, warmup_iters=4000, grad clip 0.01 (어댑터 내부)
+        "hyperparams": {
+            "lr": 5e-5,
+            "batch_size": 4,
+            "lr_scheduler": "cosine",
+            "amp_enabled": False,
+            "warmup_iters": 4000,
+        },
     },
     "cascade_rcnn": {
         "framework": "mmdet",

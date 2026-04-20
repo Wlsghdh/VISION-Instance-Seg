@@ -12,9 +12,9 @@ DATASETS:
   PROPOSAL_FILES_TEST: []
   PROPOSAL_FILES_TRAIN: []
   TEST:
-  - val_mask2former_139953072246224
+  - val_mask2former_139881613401232
   TRAIN:
-  - train_mask2former_139953072246224
+  - train_mask2former_139881613401232
 FLOAT32_PRECISION: ''
 GLOBAL:
   HACK: 1.0
@@ -350,26 +350,26 @@ MODEL:
     QK_SCALE: null
     USE_CHECKPOINT: false
     WINDOW_SIZE: 7
-  WEIGHTS: detectron2://ImageNetPretrained/torchvision/R-50.pkl
+  WEIGHTS: /project/ahnailab/yjw0619/seg/seg/VISION-Instance-Seg/checkpoints/mask2former/model_final_3c8ec9.pkl
 OUTPUT_DIR: /project/ahnailab/yjw0619/seg/seg/VISION-Instance-Seg/results/training/exp2/cond4_8x/Exp2_3cls/mask2former/seed42
 SEED: 42
 SOLVER:
   AMP:
-    ENABLED: true
+    ENABLED: false
   BACKBONE_MULTIPLIER: 0.1
   BASE_LR: 5.0e-05
   BASE_LR_END: 0.0
   BIAS_LR_FACTOR: 1.0
-  CHECKPOINT_PERIOD: 97850
+  CHECKPOINT_PERIOD: 48950
   CLIP_GRADIENTS:
     CLIP_TYPE: norm
     CLIP_VALUE: 0.01
     ENABLED: true
     NORM_TYPE: 2.0
   GAMMA: 0.1
-  IMS_PER_BATCH: 2
-  LR_SCHEDULER_NAME: WarmupMultiStepLR
-  MAX_ITER: 391400
+  IMS_PER_BATCH: 4
+  LR_SCHEDULER_NAME: WarmupCosineLR
+  MAX_ITER: 195800
   MOMENTUM: 0.9
   NESTEROV: false
   NUM_DECAYS: 3
@@ -378,11 +378,9 @@ SOLVER:
   POLY_LR_POWER: 0.9
   REFERENCE_WORLD_SIZE: 0
   RESCALE_INTERVAL: false
-  STEPS:
-  - 273980
-  - 352260
+  STEPS: []
   WARMUP_FACTOR: 1.0
-  WARMUP_ITERS: 9785
+  WARMUP_ITERS: 4895
   WARMUP_METHOD: linear
   WEIGHT_DECAY: 0.05
   WEIGHT_DECAY_BIAS: null
@@ -404,7 +402,7 @@ TEST:
     - 1100
     - 1200
   DETECTIONS_PER_IMAGE: 100
-  EVAL_PERIOD: 9785
+  EVAL_PERIOD: 4895
   EXPECTED_RESULTS: []
   KEYPOINT_OKS_SIGMAS: []
   PRECISE_BN:

@@ -189,6 +189,16 @@ class Detectron2Adapter(ModelAdapter):
         import mask2former.modeling  # backbone/pixel_decoder 등록
         from mask2former.maskformer_model import MaskFormer  # noqa: F401 — META_ARCH 등록
 
+        # Monkey-patch: torch.jit.script된 loss들이 최신 PyTorch에서
+        # "Global alloc not supported yet" 에러 발생 → 동일 함수 non-JIT로 교체.
+        # 정확도 동일, 속도만 약간 느려짐.
+        from mask2former.modeling import matcher as _m2f_matcher
+        from mask2former.modeling import criterion as _m2f_criterion
+        _m2f_matcher.batch_dice_loss_jit = _m2f_matcher.batch_dice_loss
+        _m2f_matcher.batch_sigmoid_ce_loss_jit = _m2f_matcher.batch_sigmoid_ce_loss
+        _m2f_criterion.dice_loss_jit = _m2f_criterion.dice_loss
+        _m2f_criterion.sigmoid_ce_loss_jit = _m2f_criterion.sigmoid_ce_loss
+
         cfg = d2['get_cfg']()
         add_deeplab_config(cfg)
         add_maskformer2_config(cfg)
@@ -202,7 +212,18 @@ class Detectron2Adapter(ModelAdapter):
         cfg.MODEL.WEIGHTS = self.model_info["weights"]
         cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES = self.num_classes
 
-        cfg.SOLVER.AMP.ENABLED = False
+        # Mask2Former 기본 config의 'full_model' clip type이 detectron2에서 invalid
+        # → ldy1118 MaskDINO 레시피와 동일하게 'norm' + CLIP_VALUE=0.01 (발산 방지).
+        # 이전 run(v1)에서 iter 8K→32K 사이 gradient explosion으로 학습 역주행한
+        # 문제가 관측됨 → 강한 clip으로 안정화.
+        cfg.SOLVER.CLIP_GRADIENTS.ENABLED = True
+        cfg.SOLVER.CLIP_GRADIENTS.CLIP_TYPE = "norm"
+        cfg.SOLVER.CLIP_GRADIENTS.CLIP_VALUE = 0.01
+        cfg.SOLVER.CLIP_GRADIENTS.NORM_TYPE = 2.0
+
+        # AMP/scheduler/input_size 는 setup() 공통 블록에서 hyperparams로 제어.
+        # Point-sampling / threshold 튜닝은 COCO pretrained full checkpoint 사용 시
+        # 불필요하므로 기본값 유지(v2 레시피).
 
         return cfg
 
@@ -247,25 +268,23 @@ class Detectron2Adapter(ModelAdapter):
 
         batch_size = hyperparams.get("batch_size", 2)
 
-        # MaskDINO/Mask2Former는 트랜스포머 기반이라 메모리 소비가 큼
-        # batch_size를 줄이고 AMP를 켜서 OOM 방지
+        # Transformer 모델(MaskDINO/Mask2Former): 메모리 소비 크므로 미지정 시 2로 폴백.
+        # 명시되면 hyperparams 값을 그대로 사용(공정성: silent override 금지).
         if self.model_name in ("maskdino", "mask2former"):
-            batch_size = min(batch_size, 2)
-            cfg.SOLVER.AMP.ENABLED = True
-            # 이미지 크기도 줄여서 메모리 절약
-            cfg.INPUT.MIN_SIZE_TRAIN = (480, 512, 544, 576, 608, 640)
-            cfg.INPUT.MAX_SIZE_TRAIN = 800
-            cfg.INPUT.MIN_SIZE_TEST = 640
-            cfg.INPUT.MAX_SIZE_TEST = 800
-            print(f"  [{self.model_name}] batch_size={batch_size}, AMP=True, max_size=800 (메모리 절약)")
+            if "batch_size" not in hyperparams:
+                batch_size = 2
+                print(f"  [{self.model_name}] batch_size 미지정 → 기본값 2 사용")
+            else:
+                print(f"  [{self.model_name}] batch_size={batch_size} (hyperparams 값 사용)")
+
+        # AMP 제어: hyperparams["amp_enabled"] 로 일원 결정 (기본 False, ldy1118 방식)
+        amp_enabled = bool(hyperparams.get("amp_enabled", False))
+        cfg.SOLVER.AMP.ENABLED = amp_enabled
+        print(f"  AMP={cfg.SOLVER.AMP.ENABLED}")
 
         cfg.SOLVER.IMS_PER_BATCH = batch_size
-        # lr도 batch_size에 비례 조정 (Linear Scaling Rule)
+        # LR은 plan 값 그대로 사용 (fine-tune 관행상 Linear Scaling Rule 미적용, He 2019)
         base_lr = hyperparams.get("lr", 1e-4)
-        orig_batch = hyperparams.get("batch_size", 2)
-        if batch_size != orig_batch:
-            base_lr = base_lr * batch_size / orig_batch
-            print(f"  LR 조정: {hyperparams.get('lr')} → {base_lr} (batch {orig_batch}→{batch_size})")
         cfg.SOLVER.BASE_LR = base_lr
 
         # 데이터 정보 (로그용)
@@ -326,8 +345,8 @@ class Detectron2Adapter(ModelAdapter):
         print(f"  Early stopping patience: {patience} evals ({patience * eval_period} iters)")
 
         cfg.INPUT.MASK_FORMAT = "polygon"
-        min_size = hyperparams.get("input_min_size", (480, 512, 544, 576, 608, 640))
-        max_size = hyperparams.get("input_max_size", 800)
+        min_size = hyperparams.get("input_min_size", (640, 672, 704, 736, 768, 800))
+        max_size = hyperparams.get("input_max_size", 1333)
         cfg.INPUT.MIN_SIZE_TRAIN = min_size
         cfg.INPUT.MAX_SIZE_TRAIN = max_size
         cfg.INPUT.MIN_SIZE_TEST = min_size[-1] if isinstance(min_size, (list, tuple)) else min_size
@@ -371,8 +390,20 @@ class Detectron2Adapter(ModelAdapter):
             return MaskDINOTrainer
 
         elif self.model_name == "mask2former":
-            # Mask2Former도 커스텀 mapper가 필요할 수 있음
+            # Mask2Former 공식 config(Base-COCO-InstanceSegmentation.yaml)는
+            # DATASET_MAPPER_NAME="coco_instance_lsj" → COCOInstanceNewBaselineDatasetMapper 사용.
+            # LSJ augmentation + BitMasks 변환이 이 mapper에 내장됨.
+            # MaskDINO mapper 재사용 시 loss_dice 수렴 실패 확인됨(04/19 디버깅).
+            from mask2former.data.dataset_mappers.coco_instance_new_baseline_dataset_mapper import (
+                COCOInstanceNewBaselineDatasetMapper,
+            )
+
             class Mask2FormerTrainer(DefaultTrainer):
+                @classmethod
+                def build_train_loader(cls, cfg):
+                    mapper = COCOInstanceNewBaselineDatasetMapper(cfg, is_train=True)
+                    return build_detection_train_loader(cfg, mapper=mapper)
+
                 @classmethod
                 def build_evaluator(cls, cfg, dataset_name, output_folder=None):
                     if output_folder is None:
