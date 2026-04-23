@@ -209,7 +209,14 @@ class Detectron2Adapter(ModelAdapter):
             config_path = MASK2FORMER_REPO / "configs" / "coco" / "instance-segmentation" / self.model_info["config"]
         cfg.merge_from_file(str(config_path))
 
-        cfg.MODEL.WEIGHTS = self.model_info["weights"]
+        # Weight override via env var (ldy m2f_lifeai_best 는 q50 patched pkl 사용)
+        import os as _os
+        weights_override = _os.environ.get("MASK2FORMER_WEIGHTS")
+        if weights_override:
+            cfg.MODEL.WEIGHTS = weights_override
+            print(f"  [Mask2Former] WEIGHTS={weights_override} (env override)")
+        else:
+            cfg.MODEL.WEIGHTS = self.model_info["weights"]
         cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES = self.num_classes
 
         # Mask2Former 기본 config의 'full_model' clip type이 detectron2에서 invalid
@@ -224,6 +231,20 @@ class Detectron2Adapter(ModelAdapter):
         # AMP/scheduler/input_size 는 setup() 공통 블록에서 hyperparams로 제어.
         # Point-sampling / threshold 튜닝은 COCO pretrained full checkpoint 사용 시
         # 불필요하므로 기본값 유지(v2 레시피).
+
+        # ldy1118 m2f_lifeai_best 호환: env var 로 backbone freeze / query 수 override.
+        # 스크립트에서 아래처럼 export 하여 사용.
+        #   export MASK2FORMER_FREEZE_BACKBONE=5
+        #   export MASK2FORMER_NUM_QUERIES=50
+        import os as _os
+        freeze_stages = _os.environ.get("MASK2FORMER_FREEZE_BACKBONE")
+        if freeze_stages is not None:
+            cfg.MODEL.BACKBONE.FREEZE_AT = int(freeze_stages)
+            print(f"  [Mask2Former] BACKBONE.FREEZE_AT={freeze_stages} (env override)")
+        num_queries = _os.environ.get("MASK2FORMER_NUM_QUERIES")
+        if num_queries is not None:
+            cfg.MODEL.MASK_FORMER.NUM_OBJECT_QUERIES = int(num_queries)
+            print(f"  [Mask2Former] NUM_OBJECT_QUERIES={num_queries} (env override)")
 
         return cfg
 

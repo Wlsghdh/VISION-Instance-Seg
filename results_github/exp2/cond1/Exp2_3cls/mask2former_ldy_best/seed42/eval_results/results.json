@@ -1,0 +1,20 @@
+{
+  "bbox_AP": 0.0,
+  "bbox_AP50": 0.0,
+  "bbox_AP75": 0.0,
+  "bbox_APs": 0.0,
+  "bbox_APm": 0.0,
+  "bbox_APl": 0.0,
+  "bbox_AP-Inclusoes": 0.0,
+  "bbox_AP-Dirty": 0.0,
+  "bbox_AP-impurities": 0.0,
+  "segm_AP": 0.22743057644701686,
+  "segm_AP50": 0.578817642628499,
+  "segm_AP75": 0.05407713405671529,
+  "segm_APs": 0.8191360440145431,
+  "segm_APm": 0.6874903437187574,
+  "segm_APl": 0.04169173559451921,
+  "segm_AP-Inclusoes": 0.09740650178378162,
+  "segm_AP-Dirty": 0.06600405907369992,
+  "segm_AP-impurities": 0.518881168483569
+}
