@@ -12,9 +12,9 @@ DATASETS:
   PROPOSAL_FILES_TEST: []
   PROPOSAL_FILES_TRAIN: []
   TEST:
-  - val_maskdino_140327994942800
+  - val_maskdino_140573906645904
   TRAIN:
-  - train_maskdino_140327994942800
+  - train_maskdino_140573906645904
 Default_loading: true
 FLOAT32_PRECISION: ''
 GLOBAL:
@@ -378,25 +378,25 @@ MODEL:
     USE_CHECKPOINT: false
     WINDOW_SIZE: 7
   WEIGHTS: detectron2://ImageNetPretrained/torchvision/R-50.pkl
-OUTPUT_DIR: /home/jjh0709/gitrepo/VISION-Instance-Seg/results/training/exp2/cond1/Exp2_3cls/maskdino/seed42
+OUTPUT_DIR: /project/ahnailab/ldy1118/VISION-Instance-Seg/results/training/exp2/cond1/Exp2_3cls/maskdino/seed42
 SEED: 42
 SOLVER:
   AMP:
     ENABLED: false
   BACKBONE_MULTIPLIER: 0.1
-  BASE_LR: 0.0015
+  BASE_LR: 5.0e-05
   BASE_LR_END: 0.0
   BIAS_LR_FACTOR: 1.0
-  CHECKPOINT_PERIOD: 250
+  CHECKPOINT_PERIOD: 2000
   CLIP_GRADIENTS:
     CLIP_TYPE: norm
     CLIP_VALUE: 0.01
     ENABLED: true
     NORM_TYPE: 2.0
   GAMMA: 0.1
-  IMS_PER_BATCH: 12
-  LR_SCHEDULER_NAME: WarmupMultiStepLR
-  MAX_ITER: 1000
+  IMS_PER_BATCH: 2
+  LR_SCHEDULER_NAME: WarmupCosineLR
+  MAX_ITER: 195800
   MOMENTUM: 0.9
   NESTEROV: false
   NUM_DECAYS: 3
@@ -405,11 +405,9 @@ SOLVER:
   POLY_LR_POWER: 0.9
   REFERENCE_WORLD_SIZE: 0
   RESCALE_INTERVAL: false
-  STEPS:
-  - 700
-  - 900
+  STEPS: []
   WARMUP_FACTOR: 1.0
-  WARMUP_ITERS: 25
+  WARMUP_ITERS: 4000
   WARMUP_METHOD: linear
   WEIGHT_DECAY: 0.05
   WEIGHT_DECAY_BIAS: null
@@ -431,7 +429,7 @@ TEST:
     - 1100
     - 1200
   DETECTIONS_PER_IMAGE: 100
-  EVAL_PERIOD: 25
+  EVAL_PERIOD: 1000
   EXPECTED_RESULTS: []
   KEYPOINT_OKS_SIGMAS: []
   PRECISE_BN:
