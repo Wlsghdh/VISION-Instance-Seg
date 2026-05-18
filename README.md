@@ -2,13 +2,11 @@
 
 > 소규모 산업 결함 검출을 위한 생성형 AI 증강 효과 — Official code & resources.
 
-**[국문 PDF](paper/paper_ko.pdf) · [English arXiv preprint](paper/paper_en_arxiv.pdf)**
+**논문 전문 — [국문 PDF 다운로드](paper/paper_ko.pdf) · [English arXiv preprint](paper/paper_en_arxiv.pdf)**
 
-<p align="center">
-  <img src="paper/preview/page-1.png" width="32%" alt="Paper page 1" />
-  <img src="paper/preview/page-2.png" width="32%" alt="Paper page 2" />
-  <img src="paper/preview/page-3.png" width="32%" alt="Paper page 3" />
-</p>
+<p align="center"><img src="paper/preview/page-1.png" width="100%" alt="Paper page 1" /></p>
+<p align="center"><img src="paper/preview/page-2.png" width="100%" alt="Paper page 2" /></p>
+<p align="center"><img src="paper/preview/page-3.png" width="100%" alt="Paper page 3" /></p>
 
 ---
 
