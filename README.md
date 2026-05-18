@@ -2,11 +2,23 @@
 
 > 소규모 산업 결함 검출을 위한 생성형 AI 증강 효과 — Official code & resources.
 
-**논문 전문 — [국문 PDF 다운로드](paper/paper_ko.pdf) · [English arXiv preprint](paper/paper_en_arxiv.pdf)**
+<h3 align="center">📄 논문 전문 보기 (PDF)</h3>
+<p align="center">
+  <a href="paper/paper_ko.pdf"><b>▶ 국문 PDF 열기 (GitHub PDF 뷰어)</b></a> &nbsp;|&nbsp;
+  <a href="paper/paper_en_arxiv.pdf"><b>▶ English arXiv preprint</b></a>
+</p>
 
-<p align="center"><img src="paper/preview/page-1.png" width="100%" alt="Paper page 1" /></p>
-<p align="center"><img src="paper/preview/page-2.png" width="100%" alt="Paper page 2" /></p>
-<p align="center"><img src="paper/preview/page-3.png" width="100%" alt="Paper page 3" /></p>
+<p align="center">
+  <a href="paper/paper_ko.pdf"><img src="paper/preview/page-1.png" width="100%" alt="Paper page 1 — click to open the full PDF" /></a>
+</p>
+<p align="center">
+  <a href="paper/paper_ko.pdf"><img src="paper/preview/page-2.png" width="100%" alt="Paper page 2 — click to open the full PDF" /></a>
+</p>
+<p align="center">
+  <a href="paper/paper_ko.pdf"><img src="paper/preview/page-3.png" width="100%" alt="Paper page 3 — click to open the full PDF" /></a>
+</p>
+
+> 위 이미지를 클릭하면 GitHub 내장 PDF 뷰어로 논문 원본이 즉시 열립니다.
 
 ---
 
