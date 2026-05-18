@@ -34,7 +34,9 @@ Detectron2 기본 config (Base-RCNN-FPN.yaml):
 ### 3-2. 우리 상황
 
 - **COCO pretrained 가중치로 fine-tuning** (from scratch 아님)
-- **데이터**: 5개 카테고리, baseline 26~138장 (최대 genai_125 ~260장/카테고리)
+- **데이터**: 6개 카테고리 통합(Unified, 14클래스), 클래스당 원본 20장 제한 (`N_ORIGINAL_TRAIN_PER_CLASS=20`)
+  - baseline: **280장** (Cable 20 + Screw 20 + Casting 40 + Console 80 + Cylinder 80 + Wood 40)
+  - genai_125: 280 + GenAI 1,744 = **2,024장** (실측)
 - **GPU**: NVIDIA A100 80GB x 1 (서버 정책: 1인 1GPU)
 
 ### 3-3. Batch Size 선택: 12
@@ -90,9 +92,10 @@ batch_size=12 → 0.015 / 10 = 0.0015
 ### 선택: `max_epochs=1000`
 
 - Early stopping이 자동 종료하므로 충분히 크게 설정
-- 실험 1은 조건별 데이터 양이 다름:
-  - baseline: ~26장 (Cable) ~ ~138장 (Cylinder)
-  - genai_125: ~151장 ~ ~263장
+- 실험 1은 조건별 Unified 데이터 양:
+  - baseline: 280장
+  - genai_25: 280 + ~349 = ~629장
+  - genai_125: 280 + ~1,744 = ~2,024장
 - 데이터가 적을수록 수렴이 빠르고, 많을수록 느릴 수 있음
 - 1000으로 넉넉히 잡고 early stopping에 맡기는 것이 안전
 - 실제로 1000까지 돌 일은 거의 없음 (early stopping이 먼저 중단)
@@ -109,8 +112,8 @@ batch_size=12 → 0.015 / 10 = 0.0015
 
 | 조건 (batch_size=12 기준) | 1 epoch | warmup 5 epochs |
 |--------------------------|:-------:|:---------------:|
-| Cable baseline (26장) | ~3 iter | ~15 iter |
-| Cylinder genai_125 (~263장) | ~22 iter | ~110 iter |
+| Unified baseline (280장) | ~24 iter | ~120 iter |
+| Unified genai_125 (~2,024장) | ~169 iter | ~845 iter |
 
 - 조건별로 iteration 수는 다르지만, **모든 조건에 동일 적용**
 - 논문 관례: 조건 간 HP를 다르게 하면 공정 비교 불가
@@ -140,13 +143,29 @@ batch_size=12 → 0.015 / 10 = 0.0015
 
 ## 8. Checkpoint Period
 
-### 선택: `checkpoint_period_epochs=50`
+### 선택: `checkpoint_period_epochs=50`, `max_periodic_checkpoints=1`
 
 - 50 에폭마다 모델 가중치 저장
-- 체크포인트 1개 ≈ 548MB
-- 10 에폭마다 저장하면 디스크 소비가 큼 (180회 학습 × 여러 체크포인트)
-- 50 에폭이면 학습 중단/에러 시 복구 가능하면서도 디스크 절약
-- best model은 early stopping이 별도 관리
+- 체크포인트 1개 ≈ 548MB (Cascade Mask R-CNN), 335MB (Mask R-CNN)
+
+**학습 중 — Rotation**: `max_periodic_checkpoints=1`
+- detectron2: `PeriodicCheckpointer(max_to_keep=1)`
+- mmdet: `CheckpointHook(max_keep_ckpts=3)` (best 보호 버퍼)
+
+**학습 + 평가 후 — Cleanup**: `cleanup_artifacts()` 자동 호출
+- 삭제: `model_final.pth`, 주기 체크포인트, `last_checkpoint`
+- 보존: `model_best.pth`, eval_results, config, metrics, tensorboard
+- 안전장치: `model_best.pth`가 존재할 때만 동작
+
+**디스크 사용량**:
+
+| 시점 | Mask R-CNN | Cascade Mask R-CNN |
+|---|---:|---:|
+| 학습 중 (피크) | ~1.0 GB | ~1.6 GB |
+| 평가 후 cleanup | **~0.34 GB** | **~0.55 GB** |
+
+- 36 runs 총: ~12~20 GB (이전 47 GB → 60% 절감)
+- best model은 early stopping이 `model_best.pth`로 저장, cleanup 후에도 유지
 
 ---
 
@@ -202,9 +221,12 @@ batch_size=12 → 0.015 / 10 = 0.0015
 각 (카테고리, 조건, 모델) 조합을 **3회 반복** 실행한다.
 
 seed가 영향을 주는 요소:
+- **데이터 샘플링** (시드별로 다른 20장이 클래스당 선택됨 — true independent replication)
 - 모델 가중치 초기화 (마지막 레이어)
 - 데이터 셔플 순서
 - 학습 augmentation 랜덤성
+
+→ `merged_datasets`도 **시드별로 분리**되어 (`seed{N}/` 하위 폴더) 저장됨. 링크(하드링크 → 심볼릭링크 fallback)로 원본 공유하므로 디스크 추가 비용은 거의 없음. 실측: exp1 6 conditions × 3 seeds = **~137 MB**.
 
 3회 반복의 결과를 **평균 ± 표준편차**로 보고한다.
 
@@ -230,12 +252,17 @@ seed가 영향을 주는 요소:
 | `seed` | 42, 43, 44 | 3회 반복 |
 | `warmup_epochs` | 5 | 조건 간 동일 적용 |
 | `eval_period_epochs` | 5 | 5 에폭마다 평가 |
-| `checkpoint_period_epochs` | 50 | 디스크 절약 |
+| `checkpoint_period_epochs` | 50 | 50 에폭마다 주기 저장 |
+| `max_periodic_checkpoints` | 1 | 주기 체크포인트 rotation (디스크 절약) |
 | `early_stopping_patience` | 15 | 75 에폭 동안 개선 없으면 중단 |
 | `early_stopping_metric` | segm/AP | instance segmentation mAP |
 | `input_min_size` | (640, 672, 704, 736, 768, 800) | detectron2 기본값 |
 | `input_max_size` | 1333 | 고해상도 유지, 작은 결함 보존 |
 | `lr_decay_steps` | (70%, 90%) | Step LR decay |
+| `n_original_per_class` | 20 | 클래스당 원본 20장 (`N_ORIGINAL_TRAIN_PER_CLASS`) |
+| `cleanup_artifacts` | 자동 | 평가 성공 후 model_final + 주기 체크포인트 자동 삭제. model_best만 보존 |
+| `merged_datasets` | seed별 분리 | 시드마다 다른 20장 샘플링. 링크(하드→심볼릭)로 디스크 공유 |
+| `save_results` | 매 condition마다 | incremental save로 도중 끊김에도 결과 보존 |
 
 모든 실험 조건(baseline ~ genai_125), 모든 모델(Mask R-CNN, Cascade Mask R-CNN)에 **동일 적용**.
 
@@ -243,26 +270,33 @@ seed가 영향을 주는 요소:
 
 ## 13. 카테고리 & 데이터 조건
 
-### 13-1. 카테고리 (5개)
+### 13-1. 카테고리 (6개, 14클래스 통합)
 
-| 카테고리 | 클래스 | 원본 train | GenAI/클래스 |
-|----------|--------|:---------:|:----------:|
-| Cable | thunderbolt | 26장 | 126장 |
-| Screw | defect | 57장 | 256장 |
-| Casting | Inclusoes, Rechupe | 54장 | ~120장 |
-| Console | Collision, Dirty, Gap, Scratch | 95장 | ~125장 |
-| Cylinder | Chip, PistonMiss, Porosity, RCS | 138장 | ~128장 |
+원본 데이터셋 크기 vs 학습에 사용되는 양 (`N_ORIGINAL_TRAIN_PER_CLASS=20`):
+
+| 카테고리 | 클래스 (개수) | 원본 train (전체) | 학습 사용 (20/cls) | GenAI 보유 |
+|----------|---------------|:---------------:|:------------------:|:----------:|
+| Cable | thunderbolt (1) | 26장 | **20장** | 126장 |
+| Screw | defect (1) | 57장 | **20장** | 256장 |
+| Casting | Inclusoes, Rechupe (2) | 54장 | **40장** (2×20) | ~245장 |
+| Console | Collision, Dirty, Gap, Scratch (4) | 95장 | **80장** (4×20) | ~499장 |
+| Cylinder | Chip, PistonMiss, Porosity, RCS (4) | 138장 | **80장** (4×20) | ~500장 |
+| Wood | impurities, pits (2) | 51장 | **40장** (2×20) | ~250장 |
+| **합계** | **14 클래스** | **421장** | **280장** | **~1,744장** |
+
+6개 카테고리는 `--category Unified`로 14개 결함 클래스를 한 모델로 통합 학습한다.
+`_sample_images_per_class()`로 클래스별 균형 샘플링 — 클래스의 가용 이미지가 20장 미만이면 자동으로 전체 사용.
 
 ### 13-2. 데이터 조건 (6개)
 
-| 조건 | 원본 | GenAI (클래스당) |
-|------|:----:|:---------------:|
-| baseline | 전체 | 0장 |
-| genai_25 | 전체 | 25장 |
-| genai_50 | 전체 | 50장 |
-| genai_75 | 전체 | 75장 |
-| genai_100 | 전체 | 100장 |
-| genai_125 | 전체 | 125장 |
+| 조건 | 원본 (클래스당) | GenAI (클래스당) | Unified 합계 |
+|------|:----:|:---------------:|:------------:|
+| baseline | 20장 | 0장 | 280 |
+| genai_25 | 20장 | 25장 | ~629 |
+| genai_50 | 20장 | 50장 | ~978 |
+| genai_75 | 20장 | 75장 | ~1,326 |
+| genai_100 | 20장 | 100장 | ~1,675 |
+| genai_125 | 20장 | 125장 | ~2,024 |
 
 일부 클래스는 GenAI가 125장 미만. 해당 클래스는 보유량 전부 사용.
 
@@ -271,13 +305,13 @@ seed가 영향을 주는 요소:
 ## 14. 총 학습 횟수
 
 ```
-5 카테고리 × 6 조건 × 2 모델 × 3 반복 = 180회
+1 (Unified, 14클래스 통합) × 6 조건 × 2 모델 × 3 반복 = 36회
 ```
 
 | 담당 | 모델 | 학습 횟수 |
 |------|------|:--------:|
-| 양진우 | Mask R-CNN | 90회 |
-| 임대윤 | Cascade Mask R-CNN | 90회 |
+| 양진우 | Mask R-CNN | 18회 |
+| 임대윤 | Cascade Mask R-CNN | 18회 |
 
 ---
 

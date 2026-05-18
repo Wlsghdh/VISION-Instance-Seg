@@ -184,16 +184,17 @@ merged_dir = prepare_dataset("exp1", "genai_50", "Cable", seed=42)
 ```python
 # config.py의 EXPERIMENTS에서 조건 가져옴
 params = EXPERIMENTS["exp1"]["conditions"]["genai_50"]
-# → {"n_original": -1, "n_genai_per_class": 50, "n_traditional": 0}
+# → {"n_original_per_class": 20, "n_genai_per_class": 50, "n_traditional": 0}
 
-out_dir = get_merged_dir("exp1", "genai_50", "Cable")
-# → results/merged_datasets/exp1/genai_50/Cable/
+out_dir = get_merged_dir("exp1", "genai_50", "Cable", seed=42)
+# → results/merged_datasets/exp1/genai_50/Cable/seed42/
+# (시드별 분리 — 다중 시드 학습 시 각 시드가 자체 데이터 샘플링)
 ```
 
 ### data_pipeline.py line 237~250: 원본 데이터 로드
 
 ```python
-n_original = -1            # 전체 사용
+n_original_per_class = 20  # 클래스당 20장 (N_ORIGINAL_TRAIN_PER_CLASS)
 n_genai_per_class = 50     # 클래스당 50장
 n_traditional = 0          # 전통증강 안 씀
 
@@ -205,9 +206,11 @@ orig_data = load_coco("data/Cable/train/annotations.json")
 # Cable: thunderbolt(id=1)만 필터링, id를 0으로 리매핑
 orig_data = filter_coco_by_category(orig_data, 1, {1: 0})
 
-# n_original=-1 → 전체 사용
-orig_imgs, orig_anns = _sample_images(orig_data, "data/Cable/train/images", n=-1, seed=42)
-# → 26장 전체
+# 클래스별 균형 샘플링 (Cable은 1 클래스라 20장)
+orig_imgs, orig_anns = _sample_images_per_class(
+    orig_data, "data/Cable/train/images", n_per_class=20, seed=42
+)
+# → Cable은 26장 중 20장 샘플 (1 클래스)
 ```
 
 ### data_pipeline.py line 254~261: GenAI 데이터 로드 (클래스별 균형 샘플링)
@@ -767,8 +770,8 @@ results/training/exp1/genai_50/Cable/mask_rcnn/
 EXPERIMENTS = {
     "exp1": {
         "conditions": {
-            "genai_50": {"n_original": -1, "n_genai_per_class": 50, "n_traditional": 0},
-            #                                ↑ 이 숫자를 바꾸면 GenAI 데이터 양이 바뀜
+            "genai_50": {"n_original_per_class": 20, "n_genai_per_class": 50, "n_traditional": 0},
+            #                                          ↑ 이 숫자를 바꾸면 GenAI 데이터 양이 바뀜
         },
     },
 }

@@ -1,0 +1,17 @@
+{
+  "coco/Inclusoes_precision": 0.026,
+  "coco/Dirty_precision": 0.096,
+  "coco/impurities_precision": 0.0,
+  "coco/bbox_mAP": 0.091,
+  "coco/bbox_mAP_50": 0.189,
+  "coco/bbox_mAP_75": 0.094,
+  "coco/bbox_mAP_s": 0.07,
+  "coco/bbox_mAP_m": 0.073,
+  "coco/bbox_mAP_l": 0.133,
+  "coco/segm_mAP": 0.041,
+  "coco/segm_mAP_50": 0.085,
+  "coco/segm_mAP_75": 0.033,
+  "coco/segm_mAP_s": 0.004,
+  "coco/segm_mAP_m": 0.034,
+  "coco/segm_mAP_l": 0.082
+}

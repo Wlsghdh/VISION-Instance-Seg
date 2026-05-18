@@ -18,7 +18,16 @@ import torch
 from .base import ModelAdapter
 
 
-class EarlyStoppingHook:
+from detectron2.engine.train_loop import HookBase
+
+
+class EarlyStopException(BaseException):
+    """Early stopping 발동 시 학습 루프를 중단하기 위한 예외.
+    BaseException을 상속하여 detectron2의 except Exception에 잡히지 않도록 함."""
+    pass
+
+
+class EarlyStoppingHook(HookBase):
     """
     Detectron2용 Early Stopping Hook.
     eval_period마다 metric을 체크하여 patience 횟수 동안 개선 없으면 학습 중단.
@@ -67,6 +76,11 @@ class EarlyStoppingHook:
             self.num_bad_evals = 0
             print(f"  [EarlyStopping] New best {self.metric_name}={metric_val:.4f} "
                   f"at epoch {current_epoch:.1f} (iter {next_iter})")
+            # best 모델 스냅샷 저장 (평가 시 이 파일을 우선 사용)
+            try:
+                self.trainer.checkpointer.save("model_best")
+            except Exception as exc:
+                print(f"  [EarlyStopping] model_best 저장 실패: {exc}")
         else:
             self.num_bad_evals += 1
             print(f"  [EarlyStopping] No improvement {self.num_bad_evals}/{self.patience} "
@@ -77,8 +91,8 @@ class EarlyStoppingHook:
             self.stopped_epoch = current_epoch
             print(f"\n  [EarlyStopping] STOP at epoch {current_epoch:.1f} (iter {next_iter}). "
                   f"Best {self.metric_name}={self.best_metric:.4f} at iter {self.best_iter}")
-            # 학습 중단: max_iter를 현재 iter로 설정
-            self.trainer.max_iter = next_iter
+            # 학습 강제 중단
+            raise EarlyStopException(f"Early stopping at epoch {current_epoch:.1f}")
 
     def after_train(self):
         pass
@@ -169,24 +183,21 @@ class Detectron2Adapter(ModelAdapter):
         sys.path.insert(0, str(MASK2FORMER_REPO))
         from detectron2.projects.deeplab import add_deeplab_config
 
-        # Mask2Former __init__이 데이터셋 중복 등록 오류를 발생시킴
-        # config와 모델만 직접 임포트
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "mask2former_config",
-            str(MASK2FORMER_REPO / "mask2former" / "config.py")
-        )
-        m2f_config = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m2f_config)
-        add_maskformer2_config = m2f_config.add_maskformer2_config
+        # mask2former의 config + modeling만 선택적 임포트
+        # data 모듈 건너뛰어 데이터셋 중복 등록 방지
+        from mask2former.config import add_maskformer2_config
+        import mask2former.modeling  # backbone/pixel_decoder 등록
+        from mask2former.maskformer_model import MaskFormer  # noqa: F401 — META_ARCH 등록
 
-        # 모델 등록을 위해 modeling 모듈도 임포트 (데이터셋 등록 안 함)
-        spec2 = importlib.util.spec_from_file_location(
-            "mask2former_model",
-            str(MASK2FORMER_REPO / "mask2former" / "maskformer_model.py")
-        )
-        m2f_model = importlib.util.module_from_spec(spec2)
-        spec2.loader.exec_module(m2f_model)
+        # Monkey-patch: torch.jit.script된 loss들이 최신 PyTorch에서
+        # "Global alloc not supported yet" 에러 발생 → 동일 함수 non-JIT로 교체.
+        # 정확도 동일, 속도만 약간 느려짐.
+        from mask2former.modeling import matcher as _m2f_matcher
+        from mask2former.modeling import criterion as _m2f_criterion
+        _m2f_matcher.batch_dice_loss_jit = _m2f_matcher.batch_dice_loss
+        _m2f_matcher.batch_sigmoid_ce_loss_jit = _m2f_matcher.batch_sigmoid_ce_loss
+        _m2f_criterion.dice_loss_jit = _m2f_criterion.dice_loss
+        _m2f_criterion.sigmoid_ce_loss_jit = _m2f_criterion.sigmoid_ce_loss
 
         cfg = d2['get_cfg']()
         add_deeplab_config(cfg)
@@ -198,10 +209,42 @@ class Detectron2Adapter(ModelAdapter):
             config_path = MASK2FORMER_REPO / "configs" / "coco" / "instance-segmentation" / self.model_info["config"]
         cfg.merge_from_file(str(config_path))
 
-        cfg.MODEL.WEIGHTS = self.model_info["weights"]
+        # Weight override via env var (ldy m2f_lifeai_best 는 q50 patched pkl 사용)
+        import os as _os
+        weights_override = _os.environ.get("MASK2FORMER_WEIGHTS")
+        if weights_override:
+            cfg.MODEL.WEIGHTS = weights_override
+            print(f"  [Mask2Former] WEIGHTS={weights_override} (env override)")
+        else:
+            cfg.MODEL.WEIGHTS = self.model_info["weights"]
         cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES = self.num_classes
 
-        cfg.SOLVER.AMP.ENABLED = False
+        # Mask2Former 기본 config의 'full_model' clip type이 detectron2에서 invalid
+        # → ldy1118 MaskDINO 레시피와 동일하게 'norm' + CLIP_VALUE=0.01 (발산 방지).
+        # 이전 run(v1)에서 iter 8K→32K 사이 gradient explosion으로 학습 역주행한
+        # 문제가 관측됨 → 강한 clip으로 안정화.
+        cfg.SOLVER.CLIP_GRADIENTS.ENABLED = True
+        cfg.SOLVER.CLIP_GRADIENTS.CLIP_TYPE = "norm"
+        cfg.SOLVER.CLIP_GRADIENTS.CLIP_VALUE = 0.01
+        cfg.SOLVER.CLIP_GRADIENTS.NORM_TYPE = 2.0
+
+        # AMP/scheduler/input_size 는 setup() 공통 블록에서 hyperparams로 제어.
+        # Point-sampling / threshold 튜닝은 COCO pretrained full checkpoint 사용 시
+        # 불필요하므로 기본값 유지(v2 레시피).
+
+        # ldy1118 m2f_lifeai_best 호환: env var 로 backbone freeze / query 수 override.
+        # 스크립트에서 아래처럼 export 하여 사용.
+        #   export MASK2FORMER_FREEZE_BACKBONE=5
+        #   export MASK2FORMER_NUM_QUERIES=50
+        import os as _os
+        freeze_stages = _os.environ.get("MASK2FORMER_FREEZE_BACKBONE")
+        if freeze_stages is not None:
+            cfg.MODEL.BACKBONE.FREEZE_AT = int(freeze_stages)
+            print(f"  [Mask2Former] BACKBONE.FREEZE_AT={freeze_stages} (env override)")
+        num_queries = _os.environ.get("MASK2FORMER_NUM_QUERIES")
+        if num_queries is not None:
+            cfg.MODEL.MASK_FORMER.NUM_OBJECT_QUERIES = int(num_queries)
+            print(f"  [Mask2Former] NUM_OBJECT_QUERIES={num_queries} (env override)")
 
         return cfg
 
@@ -245,33 +288,71 @@ class Detectron2Adapter(ModelAdapter):
         cfg.DATASETS.TEST = (self.val_dataset_name,)
 
         batch_size = hyperparams.get("batch_size", 2)
-        cfg.SOLVER.IMS_PER_BATCH = batch_size
-        cfg.SOLVER.BASE_LR = hyperparams.get("lr", 1e-4)
 
-        # 에폭→이터레이션 변환
+        # Transformer 모델(MaskDINO/Mask2Former): 메모리 소비 크므로 미지정 시 2로 폴백.
+        # 명시되면 hyperparams 값을 그대로 사용(공정성: silent override 금지).
+        if self.model_name in ("maskdino", "mask2former"):
+            if "batch_size" not in hyperparams:
+                batch_size = 2
+                print(f"  [{self.model_name}] batch_size 미지정 → 기본값 2 사용")
+            else:
+                print(f"  [{self.model_name}] batch_size={batch_size} (hyperparams 값 사용)")
+
+        # AMP 제어: hyperparams["amp_enabled"] 로 일원 결정 (기본 False, ldy1118 방식)
+        amp_enabled = bool(hyperparams.get("amp_enabled", False))
+        cfg.SOLVER.AMP.ENABLED = amp_enabled
+        print(f"  AMP={cfg.SOLVER.AMP.ENABLED}")
+
+        cfg.SOLVER.IMS_PER_BATCH = batch_size
+        # LR은 plan 값 그대로 사용 (fine-tune 관행상 Linear Scaling Rule 미적용, He 2019)
+        base_lr = hyperparams.get("lr", 1e-4)
+        cfg.SOLVER.BASE_LR = base_lr
+
+        # 데이터 정보 (로그용)
         from training.data_pipeline import load_coco
         train_data = load_coco(train_ann_path)
         n_train_images = len(train_data["images"])
         self.iters_per_epoch = max(1, math.ceil(n_train_images / batch_size))
 
-        max_epochs = hyperparams.get("max_epochs", 300)
-        max_iter = max_epochs * self.iters_per_epoch
+        # iter 기반 모드 우선 — 지정되면 epoch 환산 우회
+        max_iters_cli = hyperparams.get("max_iters")
+        iter_mode = max_iters_cli is not None
+
+        if iter_mode:
+            max_iter = int(max_iters_cli)
+            warmup_iters = int(hyperparams.get("warmup_iters") or 500)
+            eval_period = int(hyperparams.get("eval_period_iters") or 500)
+            ckpt_period = int(hyperparams.get("checkpoint_period_iters") or 2000)
+            print(f"  [ITER 모드] max_iters={max_iter}, warmup={warmup_iters}, eval_period={eval_period}")
+        else:
+            max_epochs = hyperparams.get("max_epochs", 300)
+            max_iter = max_epochs * self.iters_per_epoch
+            warmup_iters = hyperparams.get("warmup_epochs", 5) * self.iters_per_epoch
+            eval_period_epochs = hyperparams.get("eval_period_epochs", 5)
+            eval_period = eval_period_epochs * self.iters_per_epoch
+            ckpt_period = hyperparams.get("checkpoint_period_epochs", 10) * self.iters_per_epoch
+            print(f"  [EPOCH 모드] max_epochs={max_epochs} ({max_iter} iters), eval_period={eval_period_epochs}ep ({eval_period} iters)")
+
         cfg.SOLVER.MAX_ITER = max_iter
-
-        warmup_epochs = hyperparams.get("warmup_epochs", 5)
-        cfg.SOLVER.WARMUP_ITERS = warmup_epochs * self.iters_per_epoch
-
-        eval_period_epochs = hyperparams.get("eval_period_epochs", 5)
-        eval_period = eval_period_epochs * self.iters_per_epoch
+        cfg.SOLVER.WARMUP_ITERS = warmup_iters
         cfg.TEST.EVAL_PERIOD = eval_period
+        cfg.SOLVER.CHECKPOINT_PERIOD = ckpt_period
 
-        checkpoint_period_epochs = hyperparams.get("checkpoint_period_epochs", 10)
-        cfg.SOLVER.CHECKPOINT_PERIOD = checkpoint_period_epochs * self.iters_per_epoch
+        # 주기 체크포인트 rotation 개수
+        self._max_periodic_ckpts = hyperparams.get("max_periodic_checkpoints", 1)
 
-        # LR decay steps (마지막 30%, 10%)
-        cfg.SOLVER.STEPS = (int(max_iter * 0.7), int(max_iter * 0.9))
+        # LR scheduler 선택
+        lr_scheduler = hyperparams.get("lr_scheduler", "step")
+        if lr_scheduler == "cosine":
+            cfg.SOLVER.LR_SCHEDULER_NAME = "WarmupCosineLR"
+            cfg.SOLVER.STEPS = ()  # cosine은 STEPS 무시
+            print(f"  LR scheduler: WarmupCosineLR")
+        else:
+            decay_steps = hyperparams.get("lr_decay_steps", (0.7, 0.9))
+            cfg.SOLVER.STEPS = tuple(int(max_iter * s) for s in decay_steps)
+            print(f"  LR scheduler: WarmupMultiStepLR (steps={cfg.SOLVER.STEPS})")
 
-        # Early stopping 설정 저장
+        # Early stopping
         patience = hyperparams.get("early_stopping_patience", 15)
         es_metric = hyperparams.get("early_stopping_metric", "segm/AP")
         self.early_stopping_hook = EarlyStoppingHook(
@@ -282,18 +363,17 @@ class Detectron2Adapter(ModelAdapter):
         )
 
         print(f"  Train images: {n_train_images}, iters/epoch: {self.iters_per_epoch}")
-        print(f"  Max epochs: {max_epochs} ({max_iter} iters)")
-        print(f"  Eval every {eval_period_epochs} epochs ({eval_period} iters)")
-        print(f"  Early stopping patience: {patience} evals ({patience * eval_period_epochs} epochs)")
+        print(f"  Early stopping patience: {patience} evals ({patience * eval_period} iters)")
 
         cfg.INPUT.MASK_FORMAT = "polygon"
-        min_size = hyperparams.get("input_min_size", (480, 512, 544, 576, 608, 640))
-        max_size = hyperparams.get("input_max_size", 800)
+        min_size = hyperparams.get("input_min_size", (640, 672, 704, 736, 768, 800))
+        max_size = hyperparams.get("input_max_size", 1333)
         cfg.INPUT.MIN_SIZE_TRAIN = min_size
         cfg.INPUT.MAX_SIZE_TRAIN = max_size
         cfg.INPUT.MIN_SIZE_TEST = min_size[-1] if isinstance(min_size, (list, tuple)) else min_size
         cfg.INPUT.MAX_SIZE_TEST = max_size
 
+        output_dir = Path(output_dir)
         cfg.OUTPUT_DIR = str(output_dir)
         cfg.SEED = hyperparams.get("seed", 42)
 
@@ -331,8 +411,20 @@ class Detectron2Adapter(ModelAdapter):
             return MaskDINOTrainer
 
         elif self.model_name == "mask2former":
-            # Mask2Former도 커스텀 mapper가 필요할 수 있음
+            # Mask2Former 공식 config(Base-COCO-InstanceSegmentation.yaml)는
+            # DATASET_MAPPER_NAME="coco_instance_lsj" → COCOInstanceNewBaselineDatasetMapper 사용.
+            # LSJ augmentation + BitMasks 변환이 이 mapper에 내장됨.
+            # MaskDINO mapper 재사용 시 loss_dice 수렴 실패 확인됨(04/19 디버깅).
+            from mask2former.data.dataset_mappers.coco_instance_new_baseline_dataset_mapper import (
+                COCOInstanceNewBaselineDatasetMapper,
+            )
+
             class Mask2FormerTrainer(DefaultTrainer):
+                @classmethod
+                def build_train_loader(cls, cfg):
+                    mapper = COCOInstanceNewBaselineDatasetMapper(cfg, is_train=True)
+                    return build_detection_train_loader(cfg, mapper=mapper)
+
                 @classmethod
                 def build_evaluator(cls, cfg, dataset_name, output_folder=None):
                     if output_folder is None:
@@ -361,6 +453,30 @@ class Detectron2Adapter(ModelAdapter):
         trainer = TrainerClass(self.cfg)
         trainer.resume_or_load(resume=False)
 
+        # 주기 체크포인트 rotation 활성화
+        # DefaultTrainer.build_hooks()는 PeriodicCheckpointer를 max_to_keep 없이 생성하므로
+        # 학습 도중 모든 주기 체크포인트가 누적된다. trainer._hooks 리스트에서 찾아 교체.
+        # fvcore.common.checkpoint.PeriodicCheckpointer:438은 *_final.pth를 명시적으로 보호하고,
+        # EarlyStoppingHook이 별도로 저장하는 model_best.pth는 rotation 큐에 들어가지 않는다.
+        import weakref
+        from detectron2.engine.hooks import PeriodicCheckpointer
+        max_keep = getattr(self, "_max_periodic_ckpts", 1)
+        for i, h in enumerate(trainer._hooks):
+            if isinstance(h, PeriodicCheckpointer):
+                new_hook = PeriodicCheckpointer(
+                    trainer.checkpointer,
+                    self.cfg.SOLVER.CHECKPOINT_PERIOD,
+                    max_iter=self.cfg.SOLVER.MAX_ITER,
+                    max_to_keep=max_keep,
+                )
+                # register_hooks()가 평소 해주는 trainer 바인딩을 수동으로 처리
+                # (HookBase는 weakref.proxy로 trainer를 들고 있어야 before_train 등이 동작)
+                new_hook.trainer = weakref.proxy(trainer)
+                trainer._hooks[i] = new_hook
+                print(f"  [Checkpoint] Rotation 활성화: 최신 {max_keep}개만 유지 "
+                      f"(model_best/model_final 별도 보존)")
+                break
+
         # Early stopping hook 등록
         if self.early_stopping_hook is not None:
             self.early_stopping_hook.trainer = trainer
@@ -371,9 +487,55 @@ class Detectron2Adapter(ModelAdapter):
             es_hook = hooks.pop()
             hooks.append(es_hook)
 
+        # 학습 전 GPU 상태 기록
+        pre_train_gpu = {}
+        if torch.cuda.is_available():
+            device_id = torch.cuda.current_device()
+            pre_train_gpu["device_id"] = device_id
+            pre_train_gpu["memory_used_mb"] = round(torch.cuda.memory_reserved() / (1024 ** 2), 1)
+            pre_train_gpu["lr"] = self.cfg.SOLVER.BASE_LR
+            pre_train_gpu["batch_size"] = self.cfg.SOLVER.IMS_PER_BATCH
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits",
+                     f"--id={device_id}"],
+                    capture_output=True, text=True, timeout=5
+                )
+                used, total = result.stdout.strip().split(", ")
+                pre_train_gpu["gpu_memory_used_mb"] = int(used)
+                pre_train_gpu["gpu_memory_total_mb"] = int(total)
+            except Exception:
+                pass
+
         # GPU 메모리 추적 시작
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
+
+        # GPU 활용률 피크 추적 (백그라운드 스레드)
+        import threading
+        gpu_util_peak = [0]
+        gpu_util_stop = threading.Event()
+
+        def _monitor_gpu_util():
+            import subprocess
+            device_id = torch.cuda.current_device() if torch.cuda.is_available() else 0
+            while not gpu_util_stop.is_set():
+                try:
+                    result = subprocess.run(
+                        ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits",
+                         f"--id={device_id}"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    val = int(result.stdout.strip())
+                    if val > gpu_util_peak[0]:
+                        gpu_util_peak[0] = val
+                except Exception:
+                    pass
+                gpu_util_stop.wait(60)  # 60초마다 측정
+
+        gpu_monitor = threading.Thread(target=_monitor_gpu_util, daemon=True)
+        gpu_monitor.start()
 
         max_epochs = self.cfg.SOLVER.MAX_ITER / self.iters_per_epoch if self.iters_per_epoch else "?"
 
@@ -385,12 +547,25 @@ class Detectron2Adapter(ModelAdapter):
         print(f"  OUTPUT: {self.cfg.OUTPUT_DIR}")
         print(f"{'='*60}\n")
 
-        trainer.train()
+        try:
+            trainer.train()
+        except EarlyStopException as e:
+            print(f"\n  {e}")
+            # Early stop으로 학습 루프가 끊기면 detectron2의 final 저장이 실행되지 않으므로
+            # 평가 단계가 model_final.pth를 못 찾음. 정상 종료와 동일하게 명시적으로 저장.
+            trainer.checkpointer.save("model_final")
+            print(f"  [EarlyStopping] model_final.pth 저장 완료")
+
+        # GPU 모니터링 중지
+        gpu_util_stop.set()
+        gpu_monitor.join(timeout=5)
 
         # GPU 메모리 측정
         peak_memory_mb = None
+        peak_memory_reserved_mb = None
         if torch.cuda.is_available():
             peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
+            peak_memory_reserved_mb = torch.cuda.max_memory_reserved() / (1024 ** 2)
 
         # metrics 수집
         final_iter = trainer.iter
@@ -403,6 +578,9 @@ class Detectron2Adapter(ModelAdapter):
             "total_epochs": round(final_epoch, 1),
             "iters_per_epoch": self.iters_per_epoch,
             "peak_memory_mb": round(peak_memory_mb, 1) if peak_memory_mb else None,
+            "peak_memory_reserved_mb": round(peak_memory_reserved_mb, 1) if peak_memory_reserved_mb else None,
+            "gpu_utilization_peak_pct": gpu_util_peak[0],
+            "pre_train_gpu": pre_train_gpu,
         }
 
         # Early stopping 정보
@@ -416,11 +594,14 @@ class Detectron2Adapter(ModelAdapter):
 
         metrics_file = Path(self.cfg.OUTPUT_DIR) / "metrics.json"
         if metrics_file.exists():
+            last_line = None
             with open(metrics_file) as f:
                 for line in f:
-                    pass
+                    if line.strip():
+                        last_line = line
+            if last_line is not None:
                 try:
-                    metrics["last_metrics"] = json.loads(line)
+                    metrics["last_metrics"] = json.loads(last_line)
                 except json.JSONDecodeError:
                     pass
 

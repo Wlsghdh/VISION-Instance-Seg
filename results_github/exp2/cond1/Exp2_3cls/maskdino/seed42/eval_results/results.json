@@ -1,0 +1,20 @@
+{
+  "bbox_AP": 0.0,
+  "bbox_AP50": 0.0,
+  "bbox_AP75": 0.0,
+  "bbox_APs": 0.0,
+  "bbox_APm": 0.0,
+  "bbox_APl": 0.0,
+  "bbox_AP-Inclusoes": 0.0,
+  "bbox_AP-Dirty": 0.0,
+  "bbox_AP-impurities": 0.0,
+  "segm_AP": 0.0,
+  "segm_AP50": 0.0,
+  "segm_AP75": 0.0,
+  "segm_APs": 0.0,
+  "segm_APm": 0.0,
+  "segm_APl": 0.0,
+  "segm_AP-Inclusoes": 0.0,
+  "segm_AP-Dirty": 0.0,
+  "segm_AP-impurities": 0.0
+}

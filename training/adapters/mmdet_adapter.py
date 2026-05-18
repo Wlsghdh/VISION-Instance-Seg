@@ -101,11 +101,12 @@ class MMDetAdapter(ModelAdapter):
 
         cfg.test_dataloader = cfg.val_dataloader.copy()
 
-        # 평가 설정
+        # 평가 설정 (SOLOv2는 mask-only → bbox 평가 제외)
+        eval_metric = ["segm"] if self.model_name == "solov2" else ["bbox", "segm"]
         cfg.val_evaluator = dict(
             type="CocoMetric",
             ann_file=str(val_ann_path),
-            metric=["bbox", "segm"],
+            metric=eval_metric,
             classwise=True,
         )
         cfg.test_evaluator = cfg.val_evaluator.copy()
@@ -154,6 +155,9 @@ class MMDetAdapter(ModelAdapter):
                 type="CheckpointHook",
                 by_epoch=True,
                 interval=checkpoint_period_epochs,
+                # 주기 체크포인트 rotation. mmengine은 best_*.pth가 rotation 큐에서
+                # 배제된다는 보장이 없어 best가 aging out되지 않도록 최소 3 버퍼 유지.
+                max_keep_ckpts=max(hyperparams.get("max_periodic_checkpoints", 1), 3),
                 save_best="coco/segm_mAP",
                 rule="greater",
             ),
@@ -181,7 +185,15 @@ class MMDetAdapter(ModelAdapter):
 
         cfg.work_dir = str(output_dir)
         cfg.seed = hyperparams.get("seed", 42)
-        cfg.load_from = None  # COCO pretrained는 mmdet가 자동 다운로드
+
+        # COCO pretrained 가중치 로드 (num_classes 불일치는 mmengine이 자동 처리)
+        pretrained_url = self.model_info.get("weights")
+        if pretrained_url:
+            cfg.load_from = pretrained_url
+            print(f"  Pretrained: {pretrained_url.split('/')[-1]}")
+        else:
+            cfg.load_from = None
+            print("  ⚠️  Pretrained 없음 — 랜덤 초기화")
 
         # GPU 설정
         cfg.gpu_ids = [0]

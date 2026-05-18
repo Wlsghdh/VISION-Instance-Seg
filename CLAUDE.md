@@ -2,6 +2,37 @@
 # Claude Code가 이 파일을 자동으로 읽습니다.
 # 프로젝트 컨텍스트를 파악하는 데 사용됩니다.
 
+---
+
+## ⚠️ 실험 계획 검증 규칙 (필수 / 최우선)
+
+**모든 새 실험(exp1/exp2/exp3 등)을 시작하기 전에 반드시 다음 절차를 따른다.**
+
+1. 실험 계획서 작성 (조건 / 하이퍼파라미터 / 담당 분배 / 평가 방식)
+2. **`experiment-plan-reviewer`** agent 에게 검토 요청 (필수)
+3. **PASS** 받을 때까지:
+   - config.py 변경 금지
+   - 학습 스크립트 작성 금지
+   - 팀원 담당 분배 확정 금지
+4. **FAIL** 받으면 **`experiment-doctor`** agent 에게 수정안 자문 요청
+5. 수정안 반영 후 reviewer 재검토 → PASS
+6. PASS된 계획서를 `docs/experiment_plans/{exp_name}_vN.md` 로 저장 (버전 관리)
+7. 그 후에만 코드/스크립트 작성 및 학습 실행
+
+> 💡 이 규칙은 사용자가 "빠르게 가자"고 해도 우회하지 않는다. 공정성·재현성은 실험의 생명.
+
+---
+
+## 📝 논문 작성 agent 활용
+
+- **`paper-references-manager`**: 참고문헌(BibTeX) 관리·인용 점검 → `docs/references/refs.bib`
+- **`paper-visualizer`**: 논문 figure/table 자동 생성 → `docs/paper/{figs,tables,scripts}/`
+- **`paper-doctor`**: 논문 story-line·문장·리뷰어 공격 시뮬레이션 (논문박사)
+
+논문 작업 시작 전 `docs/paper/visualization_pipeline.md` 와 `docs/result_summary_kcc_paper.md` 필독.
+
+---
+
 ## 프로젝트 개요
 
 - **프로젝트명**: VISION Instance Segmentation
@@ -134,37 +165,43 @@ VISION-Instance-Seg/
 
 ## 실험 계획 요약
 
-### 실험 1: 생성AI 증강 수에 따른 성능 변화
+> **공통**: 모든 실험에서 원본 이미지는 **클래스당 20장** (`config.py`의 `N_ORIGINAL_TRAIN_PER_CLASS=20`).
+> Unified 모드(14 클래스 통합)는 클래스별 균형 샘플링으로 **총 280장 원본** (Cable 20 + Screw 20 + Casting 40 + Console 80 + Cylinder 80 + Wood 40).
 
-| 조건 | 원본 | 생성AI | 합계 |
-|------|------|--------|------|
-| Baseline | 25장 | 0 | 25 |
-| +50 | 25장 | 50 | 75 |
-| +100 | 25장 | 100 | 125 |
-| +150 | 25장 | 150 | 175 |
-| +200 | 25장 | 200 | 225 |
-| +250 | 25장 | 250 | 275 |
+### 실험 1: 생성AI 증강 수에 따른 성능 변화 (6 conditions)
+
+| 조건 | 원본 (클래스당) | GenAI/클래스 | Unified 합계 |
+|------|:----:|:--------:|:------:|
+| `baseline` | 20장 | 0 | 280 |
+| `genai_25` | 20장 | 25 | ~629 |
+| `genai_50` | 20장 | 50 | ~978 |
+| `genai_75` | 20장 | 75 | ~1,326 |
+| `genai_100` | 20장 | 100 | ~1,675 |
+| `genai_125` | 20장 | 125 | ~2,024 |
 
 모델: Mask R-CNN, Cascade Mask R-CNN
 
-### 실험 2: 전통적 증강 vs 생성형 AI 증강 비교 (5가지 조건)
+### 실험 2: 전통적 증강 vs 생성형 AI 증강 비교 (5 conditions)
 
-| # | 구성 | 총 데이터 |
-|---|------|---------|
-| 1 | 원본 25장 | 25 |
-| 2 | 원본 25 + 전통 250 | 275 |
-| 3 | 원본 25 + 생성AI 250 | 275 |
-| 4 | 원본 25 + 생성AI 250 + 전통 250 | 525 |
-| 5 | 원본 25 + 생성AI 250 + 전통 2,750 | 3,025 |
+| 조건 | 구성 |
+|------|------|
+| `cond1` | 원본 20/cls |
+| `cond2` | 원본 20/cls + 전통 250 |
+| `cond3` | 원본 20/cls + GenAI 125/cls |
+| `cond4` | 원본 20/cls + GenAI 125/cls + 전통 250 |
+| `cond5` | 원본 20/cls + GenAI 125/cls + 전통 2,750 |
 
-### 실험 3: 7종 모델 비교
+모델: Mask R-CNN, Cascade Mask R-CNN, MaskDINO
 
-모델: Mask R-CNN, Cascade R-CNN, Cascade Mask R-CNN, SOLOv2, Mask DINO, +최신 2종
+### 실험 3: 7종 모델 비교 (3 conditions)
 
-데이터 조건:
-1. 원본 전체
-2. 원본 전체 + 전통 증강 3,000장
-3. 원본 전체 + 생성AI 250장 + 전통 증강 2,750장
+모델: Mask R-CNN, Cascade Mask R-CNN, MaskDINO, Mask2Former, Cascade R-CNN, SOLOv2, RTMDet-Ins
+
+| 조건 | 구성 |
+|------|------|
+| `original_only` | 원본 20/cls |
+| `with_trad` | 원본 20/cls + 전통 3,000 |
+| `with_genai_trad` | 원본 20/cls + GenAI 125/cls + 전통 2,750 |
 
 ---
 
