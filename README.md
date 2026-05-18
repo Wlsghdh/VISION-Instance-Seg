@@ -2,6 +2,16 @@
 
 > 소규모 산업 결함 검출을 위한 생성형 AI 증강 효과 — Official code & resources.
 
+**[국문 PDF](paper/paper_ko.pdf) · [English arXiv preprint](paper/paper_en_arxiv.pdf)**
+
+<p align="center">
+  <img src="paper/preview/page-1.png" width="32%" alt="Paper page 1" />
+  <img src="paper/preview/page-2.png" width="32%" alt="Paper page 2" />
+  <img src="paper/preview/page-3.png" width="32%" alt="Paper page 3" />
+</p>
+
+---
+
 ## TL;DR
 - 소규모 산업 결함 데이터(클래스당 ≈ 20장)는 학습 신호가 만성적으로 부족합니다.
 - 본 연구는 **전통 기하/색상 증강(Albumentations)** 과 **생성형 AI 증강(Gemini 2.0)** 의 효과를 동일 조건에서 비교합니다.
